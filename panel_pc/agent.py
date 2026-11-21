@@ -140,8 +140,10 @@ def get_ip():
 
 
 def t3_running():
+    # -x matches the process NAME exactly, not the full command line: pgrep -f
+    # would match unrelated shells/scripts that merely contain "t3code".
     try:
-        out = subprocess.check_output(["pgrep", "-f", "t3code"], stderr=subprocess.DEVNULL, text=True, timeout=2)
+        out = subprocess.check_output(["pgrep", "-x", "t3code"], stderr=subprocess.DEVNULL, text=True, timeout=2)
         return bool(out.strip())
     except Exception:
         return False
@@ -217,6 +219,10 @@ def run_command(cmd):
             pass
         if env is None:
             env = os.environ.copy()
+        # This service restricts capabilities to CAP_PERFMON (for intel_gpu_top),
+        # so CAP_SYS_ADMIN is missing and AppImage's FUSE mount fails with
+        # "Permission denied". Extract-and-run skips FUSE entirely.
+        env["APPIMAGE_EXTRACT_AND_RUN"] = "1"
         # gtk-launch opens the .desktop shortcut exactly like clicking it.
         subprocess.Popen(
             ["gtk-launch", "com.t3tools.T3Code"], env=env,
@@ -225,7 +231,9 @@ def run_command(cmd):
         )
         return "opening T3 Code (gtk-launch)"
     if cmd == "t3-close":
-        subprocess.run(["pkill", "-f", "t3code"], check=False)
+        # -x targets only real T3 Code processes; -f would kill anything whose
+        # command line happens to contain "t3code" (other shells, editors...).
+        subprocess.run(["pkill", "-x", "t3code"], check=False)
         return "closing T3 Code"
     return "unknown"
 
