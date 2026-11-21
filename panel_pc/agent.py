@@ -192,17 +192,22 @@ def run_command(cmd):
     if cmd == "t3-open":
         if t3_running():
             return "T3 Code already open"
-        # systemd service has no graphical env; take it from the active user session
+        # Launch through the user's systemd session, exactly like the desktop launcher.
+        # The system service has no graphical session, so use systemd-run --user.
         env = os.environ.copy()
         env.update({
-            "DISPLAY": env.get("DISPLAY") or ":0",
-            "WAYLAND_DISPLAY": env.get("WAYLAND_DISPLAY") or "wayland-1",
-            "XDG_RUNTIME_DIR": env.get("XDG_RUNTIME_DIR") or "/run/user/1000",
-            "DBUS_SESSION_BUS_ADDRESS": env.get("DBUS_SESSION_BUS_ADDRESS") or "unix:path=/run/user/1000/bus",
+            "XDG_RUNTIME_DIR": "/run/user/1000",
+            "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
+            "DISPLAY": ":0",
+            "WAYLAND_DISPLAY": "wayland-1",
         })
-        subprocess.Popen([T3_APPIMAGE], env=env, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL, start_new_session=True)
-        return "opening T3 Code"
+        subprocess.Popen(
+            ["systemd-run", "--user", "--scope",
+             "--unit=app-com.t3tools.T3Code-panel", T3_APPIMAGE],
+            env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        return "opening T3 Code via user session"
     if cmd == "t3-close":
         subprocess.run(["pkill", "-f", "t3code"], check=False)
         return "closing T3 Code"
