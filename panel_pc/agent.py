@@ -100,11 +100,20 @@ def get_gpus():
         intel = [l for l in out.splitlines() if "VGA compatible controller" in l and "Intel" in l]
         usage = None
         try:
-            top = subprocess.check_output(
+            # intel_gpu_top runs until killed; capture output then terminate
+            proc = subprocess.Popen(
                 ["intel_gpu_top", "-l", "1", "-s", "2"],
-                stderr=subprocess.DEVNULL, text=True, timeout=4,
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
             )
-            for line in top.splitlines():
+            import time as _time
+            _time.sleep(1.5)
+            proc.terminate()
+            try:
+                top, _ = proc.communicate(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                top, _ = proc.communicate()
+            for line in (top or "").splitlines():
                 parts = line.split()
                 # Data row starts with numbers; RCS % is column 9 (index 9)
                 if parts and parts[0].replace(".", "", 1).isdigit() and len(parts) >= 7:
