@@ -1,0 +1,9 @@
+status.json
+cmd.json
+ack.json
+estado_cmd.json
+version.json
+*.tar.gz
+.deploy/
+*.new
+__pycache__/
