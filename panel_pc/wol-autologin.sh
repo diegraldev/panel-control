@@ -8,7 +8,7 @@ if [ -f "$FLAG" ]; then
   cat > "$CONF" <<'EOF'
 [Autologin]
 User=diegral
-Session=plasma.desktop
+Session=niri.desktop
 Relogin=false
 EOF
   rm -f "$FLAG"

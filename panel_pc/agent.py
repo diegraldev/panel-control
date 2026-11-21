@@ -177,22 +177,15 @@ def run_command(cmd):
     if cmd == "cancelar":
         return "shutdown canceled" if cancel_shutdown() else "nothing pending"
     if cmd == "shutdown":
-        delay = int(os.environ.get("PANEL_SHUTDOWN_DELAY", "8"))
-        post_json("/estado_cmd", {"shutdown_in": delay, "cancelable": True})
-        def fire():
-            post_json("/estado_cmd", {"shutdown_in": 0, "cancelable": False})
-            # Apagar via dbus/logind (igual que el boton de KDE), sin sudo.
-            subprocess.run([
-                "/usr/bin/gdbus", "call", "--system",
-                "--dest", "org.freedesktop.login1",
-                "--object-path", "/org/freedesktop/login1",
-                "--method", "org.freedesktop.login1.Manager.PowerOff",
-                "false",
-            ], check=False)
-        _shutdown_timer = threading.Timer(delay, fire)
-        _shutdown_timer.daemon = True
-        _shutdown_timer.start()
-        return f"shutting down in {delay}s"
+        # Apago inmediato via dbus/logind (igual que el boton del escritorio), sin sudo.
+        subprocess.run([
+            "/usr/bin/gdbus", "call", "--system",
+            "--dest", "org.freedesktop.login1",
+            "--object-path", "/org/freedesktop/login1",
+            "--method", "org.freedesktop.login1.Manager.PowerOff",
+            "false",
+        ], check=False)
+        return "shutting down"
     if cmd == "wake":
         subprocess.run([sys.executable, WOL_SCRIPT, MAC], check=False)
         return "magic packet sent"
