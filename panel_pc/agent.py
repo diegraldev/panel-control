@@ -192,14 +192,32 @@ def run_command(cmd):
     if cmd == "t3-open":
         if t3_running():
             return "T3 Code already open"
-        # gtk-launch opens the .desktop shortcut exactly like clicking it in the desktop.
-        env = os.environ.copy()
-        env.update({
-            "DISPLAY": ":0", "WAYLAND_DISPLAY": "wayland-1",
-            "XDG_RUNTIME_DIR": "/run/user/1000",
-            "XDG_SESSION_TYPE": "wayland", "XDG_CURRENT_DESKTOP": "niri",
-            "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
-        })
+        # Clone the FULL environment of a graphical session process (niri/noctalia).
+        # This is exactly what the .desktop shortcut gets when you click it.
+        env = None
+        try:
+            pids = subprocess.check_output(
+                ["pgrep", "-u", str(os.getuid()), "-f", "noctalia|niri|gnome-shell"],
+                stderr=subprocess.DEVNULL, text=True, timeout=2,
+            ).split()
+            for pid in pids:
+                try:
+                    with open(f"/proc/{pid}/environ", "rb") as f:
+                        raw = f.read()
+                    env = dict(
+                        p.decode("utf-8", "replace").split("=", 1)
+                        for p in raw.split(b"\0") if b"=" in p
+                    )
+                    if "WAYLAND_DISPLAY" in env or "DISPLAY" in env:
+                        break
+                    env = None
+                except (OSError, ValueError):
+                    continue
+        except Exception:
+            pass
+        if env is None:
+            env = os.environ.copy()
+        # gtk-launch opens the .desktop shortcut exactly like clicking it.
         subprocess.Popen(
             ["gtk-launch", "com.t3tools.T3Code"], env=env,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
