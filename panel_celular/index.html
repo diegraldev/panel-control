@@ -13,16 +13,16 @@
   header { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:4px; }
   h1 { font-size:20px; margin:0; font-weight:600; letter-spacing:-0.02em; }
   .status { font-size:12px; color:#888; }
-  .clock { font-size:12px; color:#aaa; margin-bottom:28px; }
+  .clock { font-size:12px; color:#aaa; margin-bottom:20px; }
+  .info { font-size:13px; color:#888; line-height:1.7; margin:0 0 28px; }
+  .info b { color:#000; font-weight:500; }
   .row { display:flex; align-items:baseline; justify-content:space-between; padding:14px 0; border-bottom:1px solid #e8e8e8; }
   .row:first-child { border-top:1px solid #e8e8e8; }
   .k { font-size:12px; color:#888; text-transform:uppercase; letter-spacing:.08em; }
-  .v { font-size:26px; font-weight:600; letter-spacing:-0.03em; font-variant-numeric:tabular-nums; }
+  .k .sub { font-size:11px; color:#aaa; display:block; text-transform:none; letter-spacing:0; line-height:1.4; }
+  .v { font-size:26px; font-weight:600; letter-spacing:-0.03em; font-variant-numeric:tabular-nums; text-align:right; }
   .v small { font-size:13px; color:#888; font-weight:400; }
-  .v.name { font-size:14px; font-weight:500; text-align:right; max-width:65%; }
-  .name-sub { font-size:11px; color:#aaa; font-weight:400; display:block; line-height:1.4; }
-  .info { font-size:13px; color:#888; line-height:1.7; margin:20px 0 32px; }
-  .info b { color:#000; font-weight:500; }
+  .v.ram-detail { font-size:13px; font-weight:400; color:#888; text-align:left; line-height:1.4; }
   .section { font-size:11px; color:#aaa; text-transform:uppercase; letter-spacing:.1em; margin:28px 0 8px; }
   .buttons { display:flex; gap:10px; }
   button { flex:1; padding:16px; font-size:15px; font-weight:600; font-family:inherit; border-radius:10px; cursor:pointer; transition:opacity .15s; }
@@ -44,15 +44,14 @@
 <div class="wrap">
   <header><h1>Remote Control</h1><span class="status" id="status">…</span></header>
   <div class="clock" id="clock"></div>
+  <div class="info" id="info"></div>
 
   <div id="content" class="hidden">
-    <div class="row"><span class="k">RAM</span><span class="v" id="ram">—</span></div>
+    <div class="row"><span class="k">RAM<span class="sub" id="ramDetail"></span></span><span class="v" id="ram">—</span></div>
     <div class="row"><span class="k">CPU</span><span class="v" id="cpu">—</span></div>
     <div id="gpus"></div>
     <div class="row"><span class="k">CPU Temp</span><span class="v" id="cputemp">—</span></div>
     <div class="row"><span class="k">NVIDIA GPU Temp</span><span class="v" id="nvidiatemp">—</span></div>
-
-    <div class="info" id="info"></div>
 
     <div class="section">T3 Code</div>
     <div class="buttons"><button class="secondary" id="t3btn" onclick="t3()">…</button></div>
@@ -101,7 +100,10 @@ function refresh() {
     document.getElementById('pcOff').classList.toggle('hidden', online);
     if (!online) return;
 
-    if (d.ram) document.getElementById('ram').innerHTML = d.ram.percent + '<small>%</small>';
+    if (d.ram) {
+      document.getElementById('ram').innerHTML = d.ram.percent + '<small>%</small>';
+      document.getElementById('ramDetail').textContent = d.ram.used_mb + ' / ' + d.ram.total_mb + ' MB';
+    }
     if (d.cpu_percent != null) document.getElementById('cpu').innerHTML = d.cpu_percent + '<small>%</small>';
     if (d.cpu_temp && d.cpu_temp.max != null) document.getElementById('cputemp').innerHTML = Math.round(d.cpu_temp.max) + '<small>°C</small>';
 
@@ -109,16 +111,15 @@ function refresh() {
     const list = (d.gpus || []).map(g => {
       if (g.type === 'nvidia') {
         if (g.temp != null) nvidiaTemp = Math.round(g.temp) + '<small>°C</small>';
-        return `<div class="row"><span class="k">NVIDIA GPU</span><span class="v">${g.usage != null ? Math.round(g.usage) + '<small>%</small>' : '—'}<span class="name-sub">${g.name || ''}</span></span></div>`;
+        return `<div class="row"><span class="k">NVIDIA GPU<span class="sub">${g.name || ''}</span></span><span class="v">${g.usage != null ? Math.round(g.usage) + '<small>%</small>' : '—'}</span></div>`;
       }
-      return `<div class="row"><span class="k">Intel GPU</span><span class="v">${g.usage != null ? Math.round(g.usage) + '<small>%</small>' : '—'}<span class="name-sub">${g.name || ''}</span></span></div>`;
+      return `<div class="row"><span class="k">Intel GPU<span class="sub">${g.name || ''}</span></span><span class="v">${g.usage != null ? Math.round(g.usage) + '<small>%</small>' : '—'}</span></div>`;
     }).join('');
     document.getElementById('gpus').innerHTML = list;
     document.getElementById('nvidiatemp').innerHTML = nvidiaTemp;
 
     document.getElementById('info').innerHTML =
-      '<b>' + (d.hostname||'?') + '</b> · ' + (d.ip||'?') + '<br>' +
-      'RAM ' + d.ram.used_mb + ' / ' + d.ram.total_mb + ' MB<br>' + (d.timestamp||'');
+      '<b>' + (d.hostname||'?') + '</b> · ' + (d.ip||'?');
 
     const t = document.getElementById('t3btn');
     t.textContent = d.t3_open ? 'Close T3 Code' : 'Open T3 Code';
