@@ -101,7 +101,7 @@ def get_gpus():
         usage = None
         try:
             top = subprocess.check_output(
-                ["timeout", "2", "intel_gpu_top", "-l", "1", "-s", "1"],
+                ["intel_gpu_top", "-l", "1", "-s", "2"],
                 stderr=subprocess.DEVNULL, text=True, timeout=4,
             )
             for line in top.splitlines():
