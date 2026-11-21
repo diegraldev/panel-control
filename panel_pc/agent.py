@@ -94,20 +94,29 @@ def get_gpus():
                 })
     except Exception:
         pass
-    # Intel integrated GPU: usage from drm, no temperature available
+    # Intel integrated GPU: usage via intel_gpu_top (RCS column), no temperature
     try:
-        import glob
         out = subprocess.check_output(["lspci"], stderr=subprocess.DEVNULL, text=True, timeout=3)
         intel = [l for l in out.splitlines() if "VGA compatible controller" in l and "Intel" in l]
+        usage = None
+        try:
+            top = subprocess.check_output(
+                ["timeout", "2", "intel_gpu_top", "-l", "1", "-s", "1"],
+                stderr=subprocess.DEVNULL, text=True, timeout=4,
+            )
+            for line in top.splitlines():
+                parts = line.split()
+                # Data row starts with numbers; RCS % is column 9 (index 9)
+                if parts and parts[0].replace(".", "", 1).isdigit() and len(parts) >= 13:
+                    try:
+                        usage = float(parts[9])
+                        break
+                    except (ValueError, IndexError):
+                        pass
+        except Exception:
+            pass
         for l in intel:
             name = l.split(": ", 1)[1].split(" (rev")[0] if ": " in l else l.strip()
-            usage = None
-            for f in glob.glob("/sys/class/drm/card*/device/gpu_busy_percent"):
-                try:
-                    usage = int(open(f).read().strip())
-                    break
-                except Exception:
-                    pass
             gpus.append({"name": name, "usage": usage, "temp": None, "type": "intel"})
     except Exception:
         pass
@@ -163,7 +172,7 @@ def run_command(cmd):
         post_json("/estado_cmd", {"shutdown_in": delay, "cancelable": True})
         def fire():
             post_json("/estado_cmd", {"shutdown_in": 0, "cancelable": False})
-            subprocess.run(["/usr/bin/systemctl", "poweroff"], check=False)
+            subprocess.run(["/usr/bin/sudo", "-n", "/usr/bin/systemctl", "poweroff"], check=False)
         _shutdown_timer = threading.Timer(delay, fire)
         _shutdown_timer.daemon = True
         _shutdown_timer.start()
@@ -174,7 +183,16 @@ def run_command(cmd):
     if cmd == "t3-open":
         if t3_running():
             return "T3 Code already open"
-        subprocess.Popen([T3_APPIMAGE], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        # systemd service has no graphical env; take it from the active user session
+        env = os.environ.copy()
+        env.update({
+            "DISPLAY": env.get("DISPLAY") or ":0",
+            "WAYLAND_DISPLAY": env.get("WAYLAND_DISPLAY") or "wayland-1",
+            "XDG_RUNTIME_DIR": env.get("XDG_RUNTIME_DIR") or "/run/user/1000",
+            "DBUS_SESSION_BUS_ADDRESS": env.get("DBUS_SESSION_BUS_ADDRESS") or "unix:path=/run/user/1000/bus",
+        })
+        subprocess.Popen([T3_APPIMAGE], env=env, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
         return "opening T3 Code"
     if cmd == "t3-close":
         subprocess.run(["pkill", "-f", "t3code"], check=False)

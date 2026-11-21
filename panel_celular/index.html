@@ -20,7 +20,7 @@
   .v { font-size:26px; font-weight:600; letter-spacing:-0.03em; font-variant-numeric:tabular-nums; }
   .v small { font-size:13px; color:#888; font-weight:400; }
   .v.name { font-size:14px; font-weight:500; text-align:right; max-width:65%; }
-  .name-sub { font-size:11px; color:#aaa; display:block; margin-top:2px; }
+  .name-sub { font-size:11px; color:#aaa; font-weight:400; display:block; line-height:1.4; }
   .info { font-size:13px; color:#888; line-height:1.7; margin:20px 0 32px; }
   .info b { color:#000; font-weight:500; }
   .section { font-size:11px; color:#aaa; text-transform:uppercase; letter-spacing:.1em; margin:28px 0 8px; }
@@ -109,11 +109,9 @@ function refresh() {
     const list = (d.gpus || []).map(g => {
       if (g.type === 'nvidia') {
         if (g.temp != null) nvidiaTemp = Math.round(g.temp) + '<small>°C</small>';
-        return `<div class="row"><span class="k">NVIDIA GPU</span><span class="v">${g.usage != null ? Math.round(g.usage) + '<small>%</small>' : '—'}</span></div>` +
-               `<span class="name-sub" style="display:block;margin-top:-10px;padding:0 0 12px;border-bottom:1px solid #e8e8e8">${g.name || ''}</span>`;
+        return `<div class="row"><span class="k">NVIDIA GPU</span><span class="v">${g.usage != null ? Math.round(g.usage) + '<small>%</small>' : '—'}<span class="name-sub">${g.name || ''}</span></span></div>`;
       }
-      return `<div class="row"><span class="k">Intel GPU</span><span class="v">${g.usage != null ? Math.round(g.usage) + '<small>%</small>' : '—'}</span></div>` +
-             `<span class="name-sub" style="display:block;margin-top:-10px;padding:0 0 12px;border-bottom:1px solid #e8e8e8">${g.name || ''}</span>`;
+      return `<div class="row"><span class="k">Intel GPU</span><span class="v">${g.usage != null ? Math.round(g.usage) + '<small>%</small>' : '—'}<span class="name-sub">${g.name || ''}</span></span></div>`;
     }).join('');
     document.getElementById('gpus').innerHTML = list;
     document.getElementById('nvidiatemp').innerHTML = nvidiaTemp;
