@@ -132,7 +132,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._send(500, str(e), "text/plain")
         elif self.path == "/status":
-            self._send(200, read_json(STATUS_FILE, {"estado": "sin datos"}))
+            self._send(200, read_json(STATUS_FILE, {"status": "no data"}))
         elif self.path == "/cmd":
             self._send(200, read_json(CMD_FILE, {}))
         elif self.path == "/ack":

@@ -5,5 +5,5 @@ H=/data/data/com.termux/files/home
 cd $H/panel
 termux-wake-lock
 if ! pgrep -f "python3 server.py" >/dev/null; then
-  env REPO_URL=diegraldev/panel-control nohup python3 server.py > $H/panel/server.log 2>&1 &
+  env REPO_URL=diegraldev/remotecontrol nohup python3 server.py > $H/panel/server.log 2>&1 &
 fi

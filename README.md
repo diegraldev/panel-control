@@ -1,18 +1,15 @@
-# Panel de Control (PC <-> Celular via Tailscale)
+# Remote Control
 
-Panel web minimalista servido en un celular Android (Termux) que muestra el estado
-de una PC y permite prenderla (Wake-on-LAN), apagarla y abrir/cerrar T3 Code.
+Minimal black-and-white web panel served from an Android phone (Termux) over Tailscale.
+It shows the PC status and can wake it (Wake-on-LAN), shut it down, and open/close T3 Code.
 
-## Estructura
-- `panel_celular/` — servidor Python + HTML + wol.py + auto-deploy desde GitHub
-- `panel_pc/` — agente Python (envia RAM/CPU/temp/GPU/T3 Code y ejecuta comandos)
-- `wol.py` — magic packet UDP
+## Structure
+- `panel_celular/` — Python server + HTML + wol.py + auto-deploy + boot script
+- `panel_pc/` — PC agent (RAM, CPU, GPU usage/temps, T3 Code, commands)
 
 ## Auto-deploy
-El celular consulta GitHub cada 30s (`DEPLOY_POLL`) y, si hay commit nuevo en `main`,
-descarga, copia los archivos y se reinicia. Configurar variables de entorno en Termux:
-- `REPO_URL` = `usuario/repo`
-- `REPO_TOKEN` = token de GitHub (solo si el repo es privado)
+The phone polls GitHub every 30s (`DEPLOY_POLL`). On a new commit on `main`, it
+downloads, copies the files and restarts automatically.
 
-## Uso
-Abrir `http://100.113.245.28:8080` con Tailscale activo.
+## Usage
+Open `http://100.113.245.28:8080` with Tailscale enabled.

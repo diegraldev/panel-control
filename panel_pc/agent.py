@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Agente de la PC: reporta estado al celular y ejecuta comandos.
+"""PC agent: reports status to the phone and runs commands.
 
-Comandos soportados: shutdown, wake, cancelar, t3-open, t3-close.
+Commands: shutdown, wake, cancelar, t3-open, t3-close.
 """
 import json
 import os
@@ -11,20 +11,19 @@ import sys
 import threading
 import time
 import urllib.request
-from urllib.parse import urlparse
 
-CELULAR = os.environ.get("PANEL_URL", "http://100.113.245.28:8080")
-INTERVALO = int(os.environ.get("PANEL_INTERVAL", "5"))
+PHONE = os.environ.get("PANEL_URL", "http://100.113.245.28:8080")
+INTERVAL = int(os.environ.get("PANEL_INTERVAL", "5"))
 MAC = os.environ.get("PC_MAC", "d8:bb:c1:22:1a:d1")
 WOL_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "wol.py")
 T3_APPIMAGE = os.environ.get(
     "T3_APPIMAGE",
     "/home/diegral/Downloads/T3-Code-Nightly-x86_64_4208950c0787b1202aed9c2bb25c78db.AppImage",
 )
-_apagado_timer = None
+_shutdown_timer = None
 
 
-# ---------- helpers ----------
+# ---------- metrics ----------
 def get_ram():
     try:
         d = {}
@@ -36,9 +35,9 @@ def get_ram():
         avail = d.get("MemAvailable", d["MemFree"])
         return {
             "total_mb": round(total / 1024),
-            "usado_mb": round((total - avail) / 1024),
-            "libre_mb": round(avail / 1024),
-            "porcentaje": round(100 * (total - avail) / total),
+            "used_mb": round((total - avail) / 1024),
+            "free_mb": round(avail / 1024),
+            "percent": round(100 * (total - avail) / total),
         }
     except Exception as e:
         return {"error": str(e)}
@@ -53,7 +52,7 @@ def get_cpu():
         return None
 
 
-def get_temp():
+def get_cpu_temp():
     try:
         out = subprocess.check_output(["sensors", "-u"], stderr=subprocess.DEVNULL, text=True, timeout=3)
         temps, cur = {}, None
@@ -63,39 +62,53 @@ def get_temp():
             elif "temp" in line and "+" in line:
                 temps[cur] = float(line.split("+")[1].split()[0])
         if temps:
-            return {"max": max(temps.values()), "fuente": "sensors"}
+            return {"max": max(temps.values()), "source": "sensors"}
     except Exception:
         pass
     try:
         import glob
         vals = [int(open(f).read().strip()) / 1000 for f in glob.glob("/sys/class/thermal/thermal_zone*/temp")]
         if vals:
-            return {"max": max(vals), "fuente": "thermal_zone"}
+            return {"max": max(vals), "source": "thermal_zone"}
     except Exception:
         pass
-    return {"max": None, "fuente": "no disponible"}
+    return {"max": None, "source": "unavailable"}
 
 
 def get_gpus():
-    """Temperatura de todas las GPUs NVIDIA + deteccion de GPUs Intel."""
+    """GPU usage and temperature. NVIDIA via nvidia-smi, Intel via /sys/drm."""
     gpus = []
     try:
         out = subprocess.check_output(
-            ["nvidia-smi", "--query-gpu=index,name,temperature.gpu", "--format=csv,noheader,nounits"],
+            ["nvidia-smi", "--query-gpu=name,utilization.gpu,temperature.gpu", "--format=csv,noheader,nounits"],
             stderr=subprocess.DEVNULL, text=True, timeout=3,
         )
         for line in out.strip().splitlines():
             parts = [p.strip() for p in line.split(",")]
             if len(parts) >= 3:
-                gpus.append({"nombre": parts[1], "temp": float(parts[2]), "tipo": "nvidia"})
+                gpus.append({
+                    "name": parts[0],
+                    "usage": float(parts[1]),
+                    "temp": float(parts[2]),
+                    "type": "nvidia",
+                })
     except Exception:
         pass
+    # Intel integrated GPU: usage from drm, no temperature available
     try:
+        import glob
         out = subprocess.check_output(["lspci"], stderr=subprocess.DEVNULL, text=True, timeout=3)
         intel = [l for l in out.splitlines() if "VGA compatible controller" in l and "Intel" in l]
         for l in intel:
-            nombre = l.split(": ", 1)[1].split(" (rev")[0] if ": " in l else l.strip()
-            gpus.append({"nombre": nombre, "temp": None, "tipo": "intel"})
+            name = l.split(": ", 1)[1].split(" (rev")[0] if ": " in l else l.strip()
+            usage = None
+            for f in glob.glob("/sys/class/drm/card*/device/gpu_busy_percent"):
+                try:
+                    usage = int(open(f).read().strip())
+                    break
+                except Exception:
+                    pass
+            gpus.append({"name": name, "usage": usage, "temp": None, "type": "intel"})
     except Exception:
         pass
     return gpus
@@ -108,7 +121,7 @@ def get_ip():
         return "?"
 
 
-def t3_estado():
+def t3_running():
     try:
         out = subprocess.check_output(["pgrep", "-f", "t3code"], stderr=subprocess.DEVNULL, text=True, timeout=2)
         return bool(out.strip())
@@ -116,73 +129,72 @@ def t3_estado():
         return False
 
 
-# ---------- red ----------
+# ---------- network ----------
 def post_json(path, data):
     req = urllib.request.Request(
-        CELULAR + path, data=json.dumps(data).encode(),
+        PHONE + path, data=json.dumps(data).encode(),
         headers={"Content-Type": "application/json"}, method="POST")
     with urllib.request.urlopen(req, timeout=5) as r:
         return r.read().decode()
 
 
 def get_json(path):
-    with urllib.request.urlopen(CELULAR + path, timeout=5) as r:
+    with urllib.request.urlopen(PHONE + path, timeout=5) as r:
         return json.loads(r.read().decode())
 
 
-# ---------- comandos ----------
-def cancelar_apagado():
-    global _apagado_timer
-    if _apagado_timer and _apagado_timer.is_alive():
-        _apagado_timer.cancel()
-        _apagado_timer = None
+# ---------- commands ----------
+def cancel_shutdown():
+    global _shutdown_timer
+    if _shutdown_timer and _shutdown_timer.is_alive():
+        _shutdown_timer.cancel()
+        _shutdown_timer = None
         return True
     return False
 
 
-def ejecutar_comando(cmd):
-    global _apagado_timer
+def run_command(cmd):
+    global _shutdown_timer
     print(f"[CMD] {cmd}", flush=True)
     if cmd == "cancelar":
-        return "apagado cancelado" if cancelar_apagado() else "nada pendiente"
+        return "shutdown canceled" if cancel_shutdown() else "nothing pending"
     if cmd == "shutdown":
         delay = int(os.environ.get("PANEL_SHUTDOWN_DELAY", "8"))
-        post_json("/estado_cmd", {"apagado_en": delay, "cancelable": True})
+        post_json("/estado_cmd", {"shutdown_in": delay, "cancelable": True})
         def fire():
-            post_json("/estado_cmd", {"apagado_en": 0, "cancelable": False})
+            post_json("/estado_cmd", {"shutdown_in": 0, "cancelable": False})
             subprocess.run(["/usr/bin/systemctl", "poweroff"], check=False)
-        _apagado_timer = threading.Timer(delay, fire)
-        _apagado_timer.daemon = True
-        _apagado_timer.start()
-        return f"apagando en {delay}s"
+        _shutdown_timer = threading.Timer(delay, fire)
+        _shutdown_timer.daemon = True
+        _shutdown_timer.start()
+        return f"shutting down in {delay}s"
     if cmd == "wake":
         subprocess.run([sys.executable, WOL_SCRIPT, MAC], check=False)
-        return "magic packet enviado"
+        return "magic packet sent"
     if cmd == "t3-open":
-        if t3_estado():
-            return "T3 Code ya estaba abierto"
+        if t3_running():
+            return "T3 Code already open"
         subprocess.Popen([T3_APPIMAGE], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-        return "abriendo T3 Code"
+        return "opening T3 Code"
     if cmd == "t3-close":
         subprocess.run(["pkill", "-f", "t3code"], check=False)
-        return "cerrando T3 Code"
-    return "desconocido"
+        return "closing T3 Code"
+    return "unknown"
 
 
 def main():
-    # Eliminar cualquier barra final para concatenar rutas
-    global CELULAR
-    CELULAR = CELULAR.rstrip("/")
-    print(f"Agente -> {CELULAR} cada {INTERVALO}s", flush=True)
+    global PHONE
+    PHONE = PHONE.rstrip("/")
+    print(f"Agent -> {PHONE} every {INTERVAL}s", flush=True)
     while True:
         status = {
             "hostname": platform.node(),
             "ip": get_ip(),
             "ram": get_ram(),
-            "cpu_pct": get_cpu(),
-            "temp": get_temp(),
+            "cpu_percent": get_cpu(),
+            "cpu_temp": get_cpu_temp(),
             "gpus": get_gpus(),
-            "t3_abierto": t3_estado(),
+            "t3_open": t3_running(),
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         }
         try:
@@ -192,11 +204,11 @@ def main():
         try:
             cmd = get_json("/cmd").get("comando")
             if cmd:
-                resultado = ejecutar_comando(cmd)
-                post_json("/cmd/ack", {"comando": cmd, "resultado": resultado})
+                result = run_command(cmd)
+                post_json("/cmd/ack", {"comando": cmd, "resultado": result})
         except Exception as e:
             print(f"[WARN] cmd: {e}", flush=True)
-        time.sleep(INTERVALO)
+        time.sleep(INTERVAL)
 
 
 if __name__ == "__main__":

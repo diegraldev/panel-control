@@ -1,71 +1,73 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#ffffff">
-<title>Panel</title>
+<title>Remote Control</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='18' y='20' width='64' height='44' rx='5' fill='none' stroke='%23000' stroke-width='6'/%3E%3Cpath d='M10 74h80l-6-10H16z' fill='%23000'/%3E%3C/svg%3E">
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   body { margin:0; background:#fff; color:#000; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; padding:28px 20px 48px; }
   .wrap { max-width:480px; margin:0 auto; }
   header { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:4px; }
   h1 { font-size:20px; margin:0; font-weight:600; letter-spacing:-0.02em; }
-  .estado { font-size:12px; color:#888; }
-  .hora { font-size:12px; color:#aaa; margin-bottom:28px; }
-  .fila { display:flex; align-items:baseline; justify-content:space-between; padding:16px 0; border-bottom:1px solid #e8e8e8; }
-  .fila:first-child { border-top:1px solid #e8e8e8; }
+  .status { font-size:12px; color:#888; }
+  .clock { font-size:12px; color:#aaa; margin-bottom:28px; }
+  .row { display:flex; align-items:baseline; justify-content:space-between; padding:14px 0; border-bottom:1px solid #e8e8e8; }
+  .row:first-child { border-top:1px solid #e8e8e8; }
   .k { font-size:12px; color:#888; text-transform:uppercase; letter-spacing:.08em; }
-  .v { font-size:28px; font-weight:600; letter-spacing:-0.03em; font-variant-numeric:tabular-nums; }
-  .v small { font-size:14px; color:#888; font-weight:400; }
-  .v.nombre { font-size:15px; font-weight:500; text-align:right; max-width:65%; }
+  .v { font-size:26px; font-weight:600; letter-spacing:-0.03em; font-variant-numeric:tabular-nums; }
+  .v small { font-size:13px; color:#888; font-weight:400; }
+  .v.name { font-size:14px; font-weight:500; text-align:right; max-width:65%; }
+  .name-sub { font-size:11px; color:#aaa; display:block; margin-top:2px; }
   .info { font-size:13px; color:#888; line-height:1.7; margin:20px 0 32px; }
   .info b { color:#000; font-weight:500; }
-  .seccion { font-size:11px; color:#aaa; text-transform:uppercase; letter-spacing:.1em; margin:28px 0 8px; }
-  .botones { display:flex; gap:10px; }
+  .section { font-size:11px; color:#aaa; text-transform:uppercase; letter-spacing:.1em; margin:28px 0 8px; }
+  .buttons { display:flex; gap:10px; }
   button { flex:1; padding:16px; font-size:15px; font-weight:600; font-family:inherit; border-radius:10px; cursor:pointer; transition:opacity .15s; }
   button:active { opacity:.6; }
-  button:disabled { opacity:.3; cursor:not-allowed; }
-  .primario { background:#000; color:#fff; border:1px solid #000; }
-  .secundario { background:#fff; color:#000; border:1px solid #000; }
+  .primary { background:#000; color:#fff; border:1px solid #000; }
+  .secondary { background:#fff; color:#000; border:1px solid #000; }
   .msg { font-size:12px; color:#888; margin-top:18px; text-align:center; }
-  .apagado { text-align:center; padding:60px 0; }
-  .apagado .titulo { font-size:18px; font-weight:600; margin-bottom:8px; }
-  .apagado p { font-size:13px; color:#888; }
+  .offline { text-align:center; padding:60px 0; }
+  .offline .title { font-size:18px; font-weight:600; margin-bottom:8px; }
+  .offline p { font-size:13px; color:#888; }
   .hidden { display:none !important; }
   .modal { position:fixed; inset:0; background:rgba(255,255,255,.9); display:flex; align-items:center; justify-content:center; padding:24px; z-index:10; }
-  .modal .caja { background:#fff; border:1px solid #000; border-radius:14px; padding:26px; max-width:320px; width:100%; text-align:center; }
+  .modal .box { background:#fff; border:1px solid #000; border-radius:14px; padding:26px; max-width:320px; width:100%; text-align:center; }
   .modal h2 { margin:0 0 10px; font-size:18px; }
   .modal p { color:#888; font-size:13px; line-height:1.6; margin:0 0 22px; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header><h1>Panel</h1><span class="estado" id="estado">…</span></header>
-  <div class="hora" id="hora"></div>
+  <header><h1>Remote Control</h1><span class="status" id="status">…</span></header>
+  <div class="clock" id="clock"></div>
 
-  <div id="contenido" class="hidden">
-    <div class="fila"><span class="k">CPU</span><span class="v" id="cpu">—</span></div>
-    <div class="fila"><span class="k">RAM</span><span class="v" id="ram">—</span></div>
-    <div class="fila"><span class="k">Temp CPU</span><span class="v" id="temp">—</span></div>
+  <div id="content" class="hidden">
+    <div class="row"><span class="k">RAM</span><span class="v" id="ram">—</span></div>
+    <div class="row"><span class="k">CPU</span><span class="v" id="cpu">—</span></div>
     <div id="gpus"></div>
+    <div class="row"><span class="k">CPU Temp</span><span class="v" id="cputemp">—</span></div>
+    <div class="row"><span class="k">NVIDIA GPU Temp</span><span class="v" id="nvidiatemp">—</span></div>
 
     <div class="info" id="info"></div>
 
-    <div class="seccion">T3 Code</div>
-    <div class="botones"><button class="secundario" id="t3btn" onclick="t3()">…</button></div>
+    <div class="section">T3 Code</div>
+    <div class="buttons"><button class="secondary" id="t3btn" onclick="t3()">…</button></div>
 
-    <div class="seccion">Encendido</div>
-    <div class="botones">
-      <button class="secundario" id="apagarBtn" onclick="confirmar()">Apagar</button>
+    <div class="section">Power</div>
+    <div class="buttons">
+      <button class="secondary" id="shutdownBtn" onclick="confirmShutdown()">Shut down</button>
     </div>
   </div>
 
-  <div id="sinPC" class="apagado hidden">
-    <div class="titulo">PC apagada</div>
-    <p>Sin conexión con la PC.</p>
-    <div class="botones" style="margin-top:28px">
-      <button class="primario" onclick="prender()">Prender</button>
+  <div id="pcOff" class="offline hidden">
+    <div class="title">PC is off</div>
+    <p>No connection to the PC.</p>
+    <div class="buttons" style="margin-top:28px">
+      <button class="primary" onclick="wake()">Wake up</button>
     </div>
   </div>
 
@@ -73,57 +75,60 @@
 </div>
 
 <div class="modal hidden" id="modal">
-  <div class="caja" onclick="event.stopPropagation()">
-    <h2>¿Apagar la PC?</h2>
-    <p>Tienes 8 segundos para cancelar.</p>
-    <div class="botones">
-      <button class="secundario" onclick="cerrar()">Cancelar</button>
-      <button class="primario" onclick="apagar()">Apagar</button>
+  <div class="box" onclick="event.stopPropagation()">
+    <h2>Shut down the PC?</h2>
+    <p>You have 8 seconds to cancel.</p>
+    <div class="buttons">
+      <button class="secondary" onclick="closeModal()">Cancel</button>
+      <button class="primary" onclick="shutdown()">Shut down</button>
     </div>
   </div>
 </div>
 
 <script>
-const TIMEOUT = 15000; // si no hay estado en 15s, PC apagada
-let ultimo = 0;
+const TIMEOUT = 15000; // if no status for 15s, consider the PC off
 const modal = document.getElementById('modal');
-modal.onclick = cerrar;
-document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrar(); });
+modal.onclick = closeModal;
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
-function actualizar() {
+function refresh() {
   fetch('/status').then(r=>r.json()).then(d=>{
-    const ahora = Date.now();
-    const enLinea = !!d.recibido_en_celular && (ahora - (d.recibido_ts || 0) * 1000) < TIMEOUT;
-    document.getElementById('estado').textContent = enLinea ? '● en línea' : '○ apagada';
-    document.getElementById('contenido').classList.toggle('hidden', !enLinea);
-    document.getElementById('sinPC').classList.toggle('hidden', enLinea);
-    if (!enLinea) { ultimo = 0; return; }
-    ultimo = ahora;
+    const now = Date.now();
+    const online = !!d.recibido_en_celular && (now - (d.recibido_ts || 0) * 1000) < TIMEOUT;
+    const s = document.getElementById('status');
+    s.textContent = online ? '● online' : '○ offline';
+    document.getElementById('content').classList.toggle('hidden', !online);
+    document.getElementById('pcOff').classList.toggle('hidden', online);
+    if (!online) return;
 
-    if (d.cpu_pct != null) document.getElementById('cpu').innerHTML = d.cpu_pct + '<small>%</small>';
-    if (d.ram) document.getElementById('ram').innerHTML = d.ram.porcentaje + '<small>%</small>';
-    if (d.temp && d.temp.max != null) document.getElementById('temp').innerHTML = Math.round(d.temp.max) + '<small>°</small>';
+    if (d.ram) document.getElementById('ram').innerHTML = d.ram.percent + '<small>%</small>';
+    if (d.cpu_percent != null) document.getElementById('cpu').innerHTML = d.cpu_percent + '<small>%</small>';
+    if (d.cpu_temp && d.cpu_temp.max != null) document.getElementById('cputemp').innerHTML = Math.round(d.cpu_temp.max) + '<small>°C</small>';
 
-    const g = document.getElementById('gpus');
-    if (d.gpus && d.gpus.length) {
-      g.innerHTML = d.gpus.map(x =>
-        `<div class="fila"><span class="k">GPU ${x.tipo === 'nvidia' ? 'NVIDIA' : 'Intel'}</span>` +
-        `<span class="v nombre">${x.temp != null ? Math.round(x.temp) + '°' : '—'}` +
-        `<br><small style="font-size:11px;color:#aaa">${x.nombre}</small></span></div>`
-      ).join('');
-    }
+    let nvidiaTemp = '—';
+    const list = (d.gpus || []).map(g => {
+      if (g.type === 'nvidia') {
+        if (g.temp != null) nvidiaTemp = Math.round(g.temp) + '<small>°C</small>';
+        return `<div class="row"><span class="k">NVIDIA GPU</span><span class="v">${g.usage != null ? Math.round(g.usage) + '<small>%</small>' : '—'}</span></div>` +
+               `<span class="name-sub" style="display:block;margin-top:-10px;padding:0 0 12px;border-bottom:1px solid #e8e8e8">${g.name || ''}</span>`;
+      }
+      return `<div class="row"><span class="k">Intel GPU</span><span class="v">${g.usage != null ? Math.round(g.usage) + '<small>%</small>' : '—'}</span></div>` +
+             `<span class="name-sub" style="display:block;margin-top:-10px;padding:0 0 12px;border-bottom:1px solid #e8e8e8">${g.name || ''}</span>`;
+    }).join('');
+    document.getElementById('gpus').innerHTML = list;
+    document.getElementById('nvidiatemp').innerHTML = nvidiaTemp;
 
     document.getElementById('info').innerHTML =
       '<b>' + (d.hostname||'?') + '</b> · ' + (d.ip||'?') + '<br>' +
-      'RAM ' + d.ram.usado_mb + ' / ' + d.ram.total_mb + ' MB<br>' + (d.timestamp||'');
+      'RAM ' + d.ram.used_mb + ' / ' + d.ram.total_mb + ' MB<br>' + (d.timestamp||'');
 
     const t = document.getElementById('t3btn');
-    t.textContent = d.t3_abierto ? 'Cerrar T3 Code' : 'Abrir T3 Code';
-    t.dataset.accion = d.t3_abierto ? 't3-close' : 't3-open';
+    t.textContent = d.t3_open ? 'Close T3 Code' : 'Open T3 Code';
+    t.dataset.action = d.t3_open ? 't3-close' : 't3-open';
   }).catch(()=>{
-    document.getElementById('estado').textContent = '○ apagada';
-    document.getElementById('contenido').classList.add('hidden');
-    document.getElementById('sinPC').classList.remove('hidden');
+    document.getElementById('status').textContent = '○ offline';
+    document.getElementById('content').classList.add('hidden');
+    document.getElementById('pcOff').classList.remove('hidden');
   });
 }
 
@@ -133,14 +138,14 @@ function cmd(c, m) {
   .then(r=>r.json()).then(()=>document.getElementById('msg').textContent='✓ '+m)
   .catch(e=>document.getElementById('msg').textContent='Error: '+e);
 }
-function prender() { cmd('wake', 'Enviando packet…'); }
-function confirmar() { modal.classList.remove('hidden'); }
-function cerrar() { modal.classList.add('hidden'); }
-function apagar() { cerrar(); cmd('shutdown', 'Apagando en 8s…'); }
-function t3() { const b=document.getElementById('t3btn'); cmd(b.dataset.accion, b.dataset.accion==='t3-open'?'Abriendo T3 Code…':'Cerrando T3 Code…'); }
+function wake() { cmd('wake', 'Sending magic packet…'); }
+function confirmShutdown() { modal.classList.remove('hidden'); }
+function closeModal() { modal.classList.add('hidden'); }
+function shutdown() { closeModal(); cmd('shutdown', 'Shutting down in 8s…'); }
+function t3() { const b=document.getElementById('t3btn'); cmd(b.dataset.action, b.dataset.action==='t3-open'?'Opening T3 Code…':'Closing T3 Code…'); }
 
-setInterval(()=>{ document.getElementById('hora').textContent=new Date().toLocaleString(); actualizar(); }, 2000);
-actualizar();
+setInterval(()=>{ document.getElementById('clock').textContent = new Date().toLocaleString(); refresh(); }, 2000);
+refresh();
 </script>
 </body>
 </html>
