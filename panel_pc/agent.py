@@ -181,6 +181,8 @@ def run_command(cmd):
         post_json("/estado_cmd", {"shutdown_in": delay, "cancelable": True})
         def fire():
             post_json("/estado_cmd", {"shutdown_in": 0, "cancelable": False})
+            # Marcar que el proximo arranque sera remoto (WoL -> autologin)
+            subprocess.run(["/usr/bin/sudo", "-n", "/usr/local/lib/panel-pc/wol-flag-set.sh"], check=False)
             subprocess.run(["/usr/bin/sudo", "-n", "/usr/bin/systemctl", "poweroff"], check=False)
         _shutdown_timer = threading.Timer(delay, fire)
         _shutdown_timer.daemon = True

@@ -1,0 +1,13 @@
+[Unit]
+Description=Habilitar autologin de SDDM solo si el arranque fue por WoL
+Before=sddm.service display-manager.service
+DefaultDependencies=no
+After=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/lib/panel-pc/wol-autologin.sh
+
+[Install]
+WantedBy=multi-user.target
