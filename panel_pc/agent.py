@@ -107,9 +107,9 @@ def get_gpus():
             for line in top.splitlines():
                 parts = line.split()
                 # Data row starts with numbers; RCS % is column 9 (index 9)
-                if parts and parts[0].replace(".", "", 1).isdigit() and len(parts) >= 13:
+                if parts and parts[0].replace(".", "", 1).isdigit() and len(parts) >= 7:
                     try:
-                        usage = float(parts[9])
+                        usage = float(parts[6])  # RCS % column
                         break
                     except (ValueError, IndexError):
                         pass
