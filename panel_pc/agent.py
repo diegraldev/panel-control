@@ -192,37 +192,20 @@ def run_command(cmd):
     if cmd == "t3-open":
         if t3_running():
             return "T3 Code already open"
-        # Use the EXACT environment of the graphical session (same as the .desktop shortcut).
-        env = None
-        try:
-            out = subprocess.check_output(
-                ["pgrep", "-u", "diegral", "-f", "^niri$"],
-                stderr=subprocess.DEVNULL, text=True, timeout=2,
-            ).split()
-            if out:
-                with open(f"/proc/{out[0]}/environ", "rb") as f:
-                    env = dict(
-                        part.decode("utf-8", "replace").split("=", 1)
-                        for part in f.read().split(b"\0") if b"=" in part
-                    )
-        except Exception:
-            pass
-        if env is None:
-            env = os.environ.copy()
-            env.update({
-                "DISPLAY": ":0", "WAYLAND_DISPLAY": "wayland-1",
-                "XDG_RUNTIME_DIR": "/run/user/1000",
-                "XDG_SESSION_TYPE": "wayland", "XDG_CURRENT_DESKTOP": "niri",
-                "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
-            })
-        # Run the same command as the .desktop Exec line, inside the user session.
+        # gtk-launch opens the .desktop shortcut exactly like clicking it in the desktop.
+        env = os.environ.copy()
+        env.update({
+            "DISPLAY": ":0", "WAYLAND_DISPLAY": "wayland-1",
+            "XDG_RUNTIME_DIR": "/run/user/1000",
+            "XDG_SESSION_TYPE": "wayland", "XDG_CURRENT_DESKTOP": "niri",
+            "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
+        })
         subprocess.Popen(
-            ["systemd-run", "--user", "--scope", "--collect",
-             "--unit=app-t3code-panel", T3_APPIMAGE],
-            env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            ["gtk-launch", "com.t3tools.T3Code"], env=env,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
-        return "opening T3 Code (desktop shortcut command)"
+        return "opening T3 Code (gtk-launch)"
     if cmd == "t3-close":
         subprocess.run(["pkill", "-f", "t3code"], check=False)
         return "closing T3 Code"
