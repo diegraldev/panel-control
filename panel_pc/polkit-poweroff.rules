@@ -1,0 +1,12 @@
+polkit.addRule(function(action, subject) {
+    // Permitir apagar/ reiniciar al usuario diegral desde cualquier contexto
+    // (incluso sin sesion grafica activa, como el agente del panel).
+    if (action.id == "org.freedesktop.login1.power-off" ||
+        action.id == "org.freedesktop.login1.power-off-multiple-sessions" ||
+        action.id == "org.freedesktop.login1.reboot" ||
+        action.id == "org.freedesktop.login1.reboot-multiple-sessions") {
+        if (subject.user == "diegral") {
+            return polkit.Result.YES;
+        }
+    }
+});

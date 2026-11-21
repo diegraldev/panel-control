@@ -181,9 +181,14 @@ def run_command(cmd):
         post_json("/estado_cmd", {"shutdown_in": delay, "cancelable": True})
         def fire():
             post_json("/estado_cmd", {"shutdown_in": 0, "cancelable": False})
-            # Marcar que el proximo arranque sera remoto (WoL -> autologin)
-            subprocess.run(["/usr/bin/sudo", "-n", "/usr/local/lib/panel-pc/wol-flag-set.sh"], check=False)
-            subprocess.run(["/usr/bin/sudo", "-n", "/usr/bin/systemctl", "poweroff"], check=False)
+            # Apagar via dbus/logind (igual que el boton de KDE), sin sudo.
+            subprocess.run([
+                "/usr/bin/gdbus", "call", "--system",
+                "--dest", "org.freedesktop.login1",
+                "--object-path", "/org/freedesktop/login1",
+                "--method", "org.freedesktop.login1.Manager.PowerOff",
+                "false",
+            ], check=False)
         _shutdown_timer = threading.Timer(delay, fire)
         _shutdown_timer.daemon = True
         _shutdown_timer.start()
