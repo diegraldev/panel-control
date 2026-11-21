@@ -167,6 +167,15 @@ class Handler(BaseHTTPRequestHandler):
                     write_json(CMD_FILE, {})
                 else:
                     if cmd == "wake":
+                        # Avisar a la PC (via Tailscale, servicio root) que este arranque es WoL.
+                        # Si la PC esta apagada, falla silenciosamente; el flag de apagado
+                        # desde el panel sigue como respaldo.
+                        try:
+                            req = urllib.request.Request(
+                                "http://100.69.149.63:8091/wake", data=b"", method="POST")
+                            urllib.request.urlopen(req, timeout=3)
+                        except Exception:
+                            pass
                         subprocess.run([sys.executable, WOL_SCRIPT, PC_MAC], check=False)
                     write_json(CMD_FILE, {"comando": cmd, "ts": data.get("ts")})
                 self._send(200, {"ok": True, "comando": cmd})

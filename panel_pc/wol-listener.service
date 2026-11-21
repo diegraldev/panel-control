@@ -1,0 +1,13 @@
+[Unit]
+Description=Escucha senal de Wake-on-LAN del celular via Tailscale
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/lib/panel-pc/wol-listener.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
