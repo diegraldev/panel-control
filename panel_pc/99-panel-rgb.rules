@@ -1,4 +1,4 @@
 # Permitir al usuario diegral controlar el brillo del RGB del teclado/mouse
-# sin necesidad de sudo (para el modo sleep del panel).
-SUBSYSTEM=="leds", KERNEL=="msi::kbd_backlight", ACTION=="add", MODE="0666"
-SUBSYSTEM=="leds", KERNEL=="razer::logo_backlight", ACTION=="add", MODE="0666"
+# sin sudo (para el modo sleep del panel). Se aplica en add y change.
+SUBSYSTEM=="leds", KERNEL=="msi::kbd_backlight", ACTION=="add|change", MODE="0666", TAG+="uaccess"
+SUBSYSTEM=="leds", KERNEL=="razer::logo_backlight", ACTION=="add|change", MODE="0666", TAG+="uaccess"
