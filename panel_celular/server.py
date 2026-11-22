@@ -52,6 +52,32 @@ def get_version():
     return read_json(VERSION_FILE, {}).get("sha", "local")
 
 
+def get_battery():
+    """Nivel de batería del celular (el mini-servidor)."""
+    try:
+        out = subprocess.check_output(
+            ["dumpsys", "battery"], stderr=subprocess.DEVNULL, text=True, timeout=3)
+        level = None
+        charging = False
+        for line in out.splitlines():
+            if "level:" in line:
+                level = int(line.split(":", 1)[1].strip())
+            elif "powered:" in line and "true" in line:
+                charging = True
+            elif "status:" in line and "2" in line:
+                charging = True
+        return {"level": level, "charging": charging}
+    except Exception:
+        # Fallback via Termux:API
+        try:
+            out = subprocess.check_output(
+                ["termux-battery-status"], stderr=subprocess.DEVNULL, text=True, timeout=3)
+            d = json.loads(out)
+            return {"level": d.get("percentage"), "charging": d.get("status") == "CHARGING"}
+        except Exception:
+            return {"level": None, "charging": False}
+
+
 # ---------- auto deploy ----------
 def github_api(path):
     url = f"https://api.github.com/repos/{REPO}{path}"
@@ -141,6 +167,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, read_json(ESTADO_FILE, {}))
         elif self.path == "/version":
             self._send(200, {"sha": get_version(), "repo": REPO or "local"})
+        elif self.path == "/battery":
+            self._send(200, get_battery())
         else:
             self._send(404, {"error": "no encontrado"})
 

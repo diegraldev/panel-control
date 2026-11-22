@@ -13,6 +13,10 @@
   header { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:4px; }
   h1 { font-size:20px; margin:0; font-weight:600; letter-spacing:-0.02em; }
   .status { font-size:12px; color:#888; }
+  .server-battery { display:flex; align-items:center; gap:6px; font-size:11px; color:#aaa; margin-top:2px; }
+  .battery-icon { width:22px; height:11px; border:1px solid #000; border-radius:2px; position:relative; padding:1px; box-sizing:border-box; }
+  .battery-icon::after { content:''; position:absolute; right:-4px; top:3px; width:2px; height:5px; background:#000; border-radius:0 1px 1px 0; }
+  .battery-fill { height:100%; background:#000; border-radius:1px; transition:width .4s; }
   .clock { font-size:12px; color:#aaa; margin-bottom:20px; }
   .info { font-size:13px; color:#888; line-height:1.7; margin:0 0 28px; }
   .info b { color:#000; font-weight:500; }
@@ -43,6 +47,10 @@
 <body>
 <div class="wrap">
   <header><h1>Remote Control</h1><span class="status" id="status">…</span></header>
+  <div class="server-battery">
+    <span class="battery-icon"><div class="battery-fill" id="batteryFill"></div></span>
+    <span id="batteryText">Server battery —</span>
+  </div>
   <div class="clock" id="clock"></div>
   <div class="info" id="info"></div>
 
@@ -143,8 +151,17 @@ function closeModal() { modal.classList.add('hidden'); }
 function shutdown() { closeModal(); cmd('shutdown', 'Shutting down in 8s…'); }
 function t3() { const b=document.getElementById('t3btn'); cmd(b.dataset.action, b.dataset.action==='t3-open'?'Opening T3 Code…':'Closing T3 Code…'); }
 
-setInterval(()=>{ document.getElementById('clock').textContent = new Date().toLocaleString(); refresh(); }, 2000);
-refresh();
+function refreshBattery() {
+  fetch('/battery').then(r=>r.json()).then(b=>{
+    if (b.level == null) return;
+    document.getElementById('batteryFill').style.width = b.level + '%';
+    document.getElementById('batteryText').textContent =
+      'Server battery ' + b.level + '%' + (b.charging ? ' ⚡' : '');
+  }).catch(()=>{});
+}
+
+setInterval(()=>{ document.getElementById('clock').textContent = new Date().toLocaleString(); refresh(); refreshBattery(); }, 2000);
+refresh(); refreshBattery();
 </script>
 </body>
 </html>
