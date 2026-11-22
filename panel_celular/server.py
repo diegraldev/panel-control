@@ -91,31 +91,17 @@ def write_json(path, data):
 
 def get_battery():
     """Nivel de batería del celular (el mini-servidor), leyendo sysfs."""
-    level, charging = None, False
+    # Termux:API es la forma oficial y no crashea el servidor.
     try:
         out = subprocess.check_output(
-            ["/system/bin/dumpsys", "battery"], stderr=subprocess.DEVNULL,
-            text=True, timeout=5)
-        for line in out.splitlines():
-            line = line.strip()
-            if line.startswith("level:"):
-                level = int(line.split(":", 1)[1].strip())
-            elif line.startswith("powered:") and "true" in line.lower():
-                charging = True
-            elif line.startswith("status:") and line.split(":", 1)[1].strip() == "2":
-                charging = True
+            ["termux-battery-status"], stderr=subprocess.DEVNULL, text=True, timeout=5)
+        d = json.loads(out)
+        return {
+            "level": d.get("percentage"),
+            "charging": d.get("status") == "CHARGING",
+        }
     except Exception:
-        pass
-    if level is None:
-        try:
-            out = subprocess.check_output(
-                ["termux-battery-status"], stderr=subprocess.DEVNULL, text=True, timeout=5)
-            d = json.loads(out)
-            level = d.get("percentage")
-            charging = d.get("status") == "CHARGING"
-        except Exception:
-            pass
-    return {"level": level, "charging": charging}
+        return {"level": None, "charging": False}
 
 
 def get_version():
