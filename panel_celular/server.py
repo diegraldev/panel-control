@@ -89,19 +89,27 @@ def write_json(path, data):
     os.replace(tmp, path)
 
 
+_battery_cache = {"level": None, "charging": False}
+
+
 def get_battery():
-    """Nivel de batería del celular (el mini-servidor), leyendo sysfs."""
-    # Termux:API es la forma oficial y no crashea el servidor.
-    try:
-        out = subprocess.check_output(
-            ["termux-battery-status"], stderr=subprocess.DEVNULL, text=True, timeout=5)
-        d = json.loads(out)
-        return {
-            "level": d.get("percentage"),
-            "charging": d.get("status") == "CHARGING",
-        }
-    except Exception:
-        return {"level": None, "charging": False}
+    """Devuelve la batería cacheada (se actualiza en background)."""
+    return dict(_battery_cache)
+
+
+def _battery_loop():
+    """Actualiza la batería fuera del handler HTTP para no crashear la conexión."""
+    import time as _time
+    while True:
+        try:
+            out = subprocess.check_output(
+                ["termux-battery-status"], stderr=subprocess.DEVNULL, text=True, timeout=10)
+            d = json.loads(out)
+            _battery_cache["level"] = d.get("percentage")
+            _battery_cache["charging"] = d.get("status") == "CHARGING"
+        except Exception:
+            pass
+        _time.sleep(30)
 
 
 def get_version():
@@ -585,6 +593,7 @@ def main():
         pass
     load_state()
     ASSETS = Assets(os.path.join(BASE, "index.html"))
+    threading.Thread(target=_battery_loop, daemon=True).start()
     if REPO:
         threading.Thread(target=deploy_loop, daemon=True).start()
     port = int(os.environ.get("PORT", "8080"))
