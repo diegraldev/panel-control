@@ -90,27 +90,17 @@ def write_json(path, data):
 
 
 def get_battery():
-    """Nivel de batería del celular (el mini-servidor)."""
+    """Nivel de batería del celular (el mini-servidor), leyendo sysfs."""
     try:
-        out = subprocess.check_output(
-            ["dumpsys", "battery"], stderr=subprocess.DEVNULL, text=True, timeout=3)
-        level, charging = None, False
-        for line in out.splitlines():
-            if "level:" in line:
-                level = int(line.split(":", 1)[1].strip())
-            elif "powered:" in line and "true" in line:
-                charging = True
-            elif "status:" in line and line.split(":", 1)[1].strip() == "2":
-                charging = True
-        return {"level": level, "charging": charging}
+        level = int(open("/sys/class/power_supply/battery/capacity").read().strip())
     except Exception:
-        try:
-            out = subprocess.check_output(
-                ["termux-battery-status"], stderr=subprocess.DEVNULL, text=True, timeout=3)
-            d = json.loads(out)
-            return {"level": d.get("percentage"), "charging": d.get("status") == "CHARGING"}
-        except Exception:
-            return {"level": None, "charging": False}
+        level = None
+    try:
+        status = open("/sys/class/power_supply/battery/status").read().strip()
+        charging = status in ("Charging", "Full")
+    except Exception:
+        charging = False
+    return {"level": level, "charging": charging}
 
 
 def get_version():
