@@ -91,15 +91,30 @@ def write_json(path, data):
 
 def get_battery():
     """Nivel de batería del celular (el mini-servidor), leyendo sysfs."""
+    level, charging = None, False
     try:
-        level = int(open("/sys/class/power_supply/battery/capacity").read().strip())
+        out = subprocess.check_output(
+            ["/system/bin/dumpsys", "battery"], stderr=subprocess.DEVNULL,
+            text=True, timeout=5)
+        for line in out.splitlines():
+            line = line.strip()
+            if line.startswith("level:"):
+                level = int(line.split(":", 1)[1].strip())
+            elif line.startswith("powered:") and "true" in line.lower():
+                charging = True
+            elif line.startswith("status:") and line.split(":", 1)[1].strip() == "2":
+                charging = True
     except Exception:
-        level = None
-    try:
-        status = open("/sys/class/power_supply/battery/status").read().strip()
-        charging = status in ("Charging", "Full")
-    except Exception:
-        charging = False
+        pass
+    if level is None:
+        try:
+            out = subprocess.check_output(
+                ["termux-battery-status"], stderr=subprocess.DEVNULL, text=True, timeout=5)
+            d = json.loads(out)
+            level = d.get("percentage")
+            charging = d.get("status") == "CHARGING"
+        except Exception:
+            pass
     return {"level": level, "charging": charging}
 
 
