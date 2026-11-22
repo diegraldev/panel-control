@@ -32,18 +32,19 @@ html{background:var(--void);-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--void);color:var(--text);font-family:var(--font-mono);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;padding:0 1.25rem 3rem;overflow-x:hidden}
 ::selection{background:rgb(34 211 238 / .2)}
 h1,h2,p{margin:0}
-.wrap{position:relative;z-index:1;width:100%;max-width:36rem;margin:0 auto;padding-top:3.5rem}
-header{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;margin-bottom:1.75rem;padding-bottom:1rem;border-bottom:1px solid var(--line)}
+.wrap{position:relative;z-index:1;width:100%;max-width:36rem;margin:0 auto;padding-top:1.5rem}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;margin-bottom:0;padding-bottom:.35rem}
 h1{font-size:1.25rem;font-weight:400;letter-spacing:-.025em}
 h1 b{color:#fff;font-weight:400}
 .status{font-size:.8125rem;color:#fff;white-space:nowrap;font-variant-numeric:tabular-nums}
 .status.online{color:var(--accent)}
-.server-battery{display:flex;align-items:center;gap:.5rem;font-size:.6875rem;color:var(--muted);margin-top:.15rem;font-variant-numeric:tabular-nums}
-.battery-icon{width:22px;height:11px;border:1px solid var(--subtle);border-radius:2px;position:relative;padding:1px;box-sizing:border-box;flex:none}
-.battery-icon::after{content:'';position:absolute;right:-4px;top:3px;width:2px;height:5px;background:var(--subtle);border-radius:0 1px 1px 0}
-.battery-fill{height:100%;background:var(--accent);border-radius:1px;transition:width .4s var(--ease)}
-.clock{font-size:.75rem;color:var(--muted);margin:.5rem 0 1.5rem;font-variant-numeric:tabular-nums}
-.info{font-size:.8125rem;color:var(--muted);line-height:1.7;margin:0 0 2rem;font-variant-numeric:tabular-nums}
+.server-battery{display:flex;justify-content:flex-end;margin-top:.35rem}
+.battery-icon{height:18px;min-width:38px;border:1px solid var(--subtle);border-radius:3px;position:relative;box-sizing:border-box;display:flex;align-items:center;padding:2px 4px;gap:3px;overflow:visible}
+.battery-icon::after{content:'';position:absolute;right:-4px;top:5px;width:3px;height:7px;background:var(--subtle);border-radius:0 1px 1px 0}
+.battery-fill{position:absolute;left:2px;top:2px;bottom:2px;background:rgb(34 211 238 / .18);border-radius:1px;transition:width .4s var(--ease)}
+.battery-num{position:relative;z-index:1;font-size:.6875rem;color:var(--text);font-variant-numeric:tabular-nums;line-height:1}
+.clock{font-size:.75rem;color:var(--muted);margin:.15rem 0 0;font-variant-numeric:tabular-nums}
+.info{font-size:.75rem;color:var(--muted);line-height:1.5;margin:.15rem 0 1.5rem;font-variant-numeric:tabular-nums}
 .info b{color:#fff;font-weight:400}
 .section{font-size:.8125rem;font-weight:500;letter-spacing:.01em;color:#fff;margin:2.5rem 0 .9rem;padding-top:1rem;border-top:1px solid var(--line)}
 .row{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;padding:.65rem 0;border-bottom:1px solid var(--line)}
@@ -79,8 +80,10 @@ button:focus-visible{outline:1px solid var(--accent);outline-offset:3px}
 <div class="wrap">
   <header><h1>remote<b>_control</b></h1><span class="status" id="status">…</span></header>
   <div class="server-battery">
-    <span class="battery-icon"><div class="battery-fill" id="batteryFill"></div></span>
-    <span id="batteryText">server battery —</span>
+    <span class="battery-icon">
+      <div class="battery-fill" id="batteryFill"></div>
+      <span class="battery-num" id="batteryNum">—</span>
+    </span>
   </div>
   <div class="clock" id="clock"></div>
   <div class="info" id="info"></div>
@@ -92,11 +95,9 @@ button:focus-visible{outline:1px solid var(--accent);outline-offset:3px}
     <div class="row"><span class="k">cpu temp</span><span class="v" id="cputemp">—</span></div>
     <div class="row"><span class="k">nvidia gpu temp</span><span class="v" id="nvidiatemp">—</span></div>
 
-    <div class="section">t3 code</div>
-    <div class="buttons"><button id="t3btn" onclick="t3()">…</button></div>
+    <div class="buttons" style="margin-top:1.5rem"><button id="t3btn" onclick="t3()">…</button></div>
 
-    <div class="section">power</div>
-    <div class="row" style="align-items:center">
+    <div class="row" style="align-items:center;margin-top:.75rem">
       <span class="k">sleep mode</span>
       <button id="sleepBtn" class="toggle" onclick="toggleSleep()" aria-pressed="false"><span class="knob"></span></button>
     </div>
@@ -202,7 +203,7 @@ function refreshBattery(){
   fetch('/battery',{cache:'no-store'}).then(r=>r.json()).then(b=>{
     if(b.level==null)return;
     document.getElementById('batteryFill').style.width=b.level+'%';
-    document.getElementById('batteryText').textContent='server battery '+b.level+'%'+(b.charging?' ⚡':'');
+    document.getElementById('batteryNum').textContent=b.level+'%';
   }).catch(()=>{});
 }
 
