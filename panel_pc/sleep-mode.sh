@@ -17,8 +17,10 @@ case "$ACTION" in
     # Bajar a 0
     brightnessctl set 0 >/dev/null 2>&1 || true
     wpctl set-volume @DEFAULT_AUDIO_SINK@ 0 >/dev/null 2>&1 || true
-    # RGB off (sysfs, requiere root; lo hace el helper sudo)
-    /usr/bin/sudo -n /usr/local/lib/panel-pc/rgb-off.sh >/dev/null 2>&1 || true
+    # RGB off: escritura directa al sysfs (permiso via regla udev).
+    for led in /sys/class/leds/msi::kbd_backlight/brightness /sys/class/leds/razer::logo_backlight/brightness; do
+      [ -w "$led" ] && echo 0 > "$led" 2>/dev/null || true
+    done
     ;;
   off)
     # Restaurar brillo
