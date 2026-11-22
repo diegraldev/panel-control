@@ -1,6 +1,6 @@
 # Remote Control
 
-Minimal black-and-white web panel served from an Android phone (Termux) over Tailscale.
+Minimal monochrome web panel served from an Android phone (Termux) over Tailscale.
 It shows the PC status and can wake it (Wake-on-LAN), shut it down, and open/close T3 Code.
 
 ## Structure
@@ -8,8 +8,9 @@ It shows the PC status and can wake it (Wake-on-LAN), shut it down, and open/clo
 - `panel_pc/` — PC agent (RAM, CPU, GPU usage/temps, T3 Code, commands)
 
 ## Auto-deploy
-The phone polls GitHub every 30s (`DEPLOY_POLL`). On a new commit on `main`, it
-downloads, copies the files and restarts automatically.
+The phone polls GitHub every 10s (`DEPLOY_POLL`, via a cached Atom feed that costs
+zero API rate-limit units). On a new commit on `main`, it downloads, copies the
+files and restarts automatically (only if `server.py` itself changed).
 
 ## PC setup (important)
 
@@ -31,6 +32,20 @@ but `sudo`/`pkexec` do not work inside it. As a user service everything inherits
 FUSE-mounted, so it works even with a restricted capability set) and launches the app
 in a transient **`systemd-run --user --scope`**, so it survives agent restarts and keeps
 the session context.
+
+## Performance / stability / security improvements
+See [REPORT.html](REPORT.html) for the before/after report with real measurements.
+Summary: state collection 1750 ms → 3 ms, command latency 6.4 s → 0.002 s,
+agent CPU 13.9% → 1.2%, 0% read loss, CORS/Host restrictions and auto-deploy
+without consuming GitHub API rate limit. The interface keeps all endpoints,
+JSON fields and commands; only the styling changed (black/white with cyan accents).
+
+New options (all optional, with backwards-compatible defaults):
+- `PANEL_INTERVAL` (agent, s): how often status is published (default 1).
+- `GPU_SAMPLE_PERIOD` (agent, s): GPU sampling window (default 2).
+- `PANEL_TOKEN` (both): when set, requires `X-Panel-Token` on POST requests.
+- `ALLOWED_HOSTS` (panel): additional allowed hosts, comma-separated.
+- `DEPLOY_POLL` (panel, s): GitHub check interval (default 10; free 304 responses).
 
 ## Usage
 Open `http://100.113.245.28:8080` with Tailscale enabled.
