@@ -168,6 +168,8 @@ function refresh() {
     const t = document.getElementById('t3btn');
     t.textContent = d.t3_open ? 'close t3 code' : 'open t3 code';
     t.dataset.action = d.t3_open ? 't3-close' : 't3-open';
+    // El toggle refleja el estado REAL (brillo en 0), no un estado local.
+    document.getElementById('sleepBtn').setAttribute('aria-pressed', String(!!d.sleep_active));
   }).catch(()=>{
     document.getElementById('status').textContent = '○ offline';
     document.getElementById('status').classList.remove('online');
@@ -191,8 +193,9 @@ function t3() { const b=document.getElementById('t3btn'); cmd(b.dataset.action, 
 function toggleSleep() {
   const b = document.getElementById('sleepBtn');
   const turningOn = b.getAttribute('aria-pressed') !== 'true';
+  // No cambiamos aria-pressed aquí: el próximo refresh lo sincroniza con el
+  // estado real (brillo en 0). Así el toggle nunca miente.
   cmd(turningOn ? 'sleep-on' : 'sleep-off', turningOn ? 'sleep mode on…' : 'sleep mode off…');
-  b.setAttribute('aria-pressed', String(turningOn));
 }
 
 function refreshBattery(){

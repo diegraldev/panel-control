@@ -515,6 +515,21 @@ def close_t3():
     return f"closing T3 Code ({killed})"
 
 
+def _sleep_active():
+    """True si el brillo de pantalla está en 0 (modo sleep activo)."""
+    try:
+        out = subprocess.check_output(["brightnessctl", "-m"],
+                                      stderr=subprocess.DEVNULL, text=True, timeout=3)
+        percent = 0
+        for part in out.split(","):
+            if part.strip().endswith("%"):
+                percent = int(part.strip().rstrip("%"))
+                break
+        return percent == 0
+    except Exception:
+        return False
+
+
 def sleep_mode(mode):
     """Baja/restaura brillo, volumen y RGB via systemd-run --user."""
     env = _session_env()
@@ -588,6 +603,7 @@ class Agent:
             "cpu_temp": self.temp.sample(),
             "gpus": self.gpus.gpus(),
             "t3_open": t3_running(),
+            "sleep_active": _sleep_active(),
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         }
 
