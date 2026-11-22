@@ -38,7 +38,11 @@ h1{font-size:1.25rem;font-weight:400;letter-spacing:-.025em}
 h1 b{color:#fff;font-weight:400}
 .status{font-size:.8125rem;color:#fff;white-space:nowrap;font-variant-numeric:tabular-nums}
 .status.online{color:var(--accent)}
-.clock{font-size:.75rem;color:var(--muted);margin:-1rem 0 1.5rem;font-variant-numeric:tabular-nums}
+.server-battery{display:flex;align-items:center;gap:.5rem;font-size:.6875rem;color:var(--muted);margin-top:.15rem;font-variant-numeric:tabular-nums}
+.battery-icon{width:22px;height:11px;border:1px solid var(--subtle);border-radius:2px;position:relative;padding:1px;box-sizing:border-box;flex:none}
+.battery-icon::after{content:'';position:absolute;right:-4px;top:3px;width:2px;height:5px;background:var(--subtle);border-radius:0 1px 1px 0}
+.battery-fill{height:100%;background:var(--accent);border-radius:1px;transition:width .4s var(--ease)}
+.clock{font-size:.75rem;color:var(--muted);margin:.5rem 0 1.5rem;font-variant-numeric:tabular-nums}
 .info{font-size:.8125rem;color:var(--muted);line-height:1.7;margin:0 0 2rem;font-variant-numeric:tabular-nums}
 .info b{color:#fff;font-weight:400}
 .section{font-size:.8125rem;font-weight:500;letter-spacing:.01em;color:#fff;margin:2.5rem 0 .9rem;padding-top:1rem;border-top:1px solid var(--line)}
@@ -70,6 +74,10 @@ button:focus-visible{outline:1px solid var(--accent);outline-offset:3px}
 <body>
 <div class="wrap">
   <header><h1>remote<b>_control</b></h1><span class="status" id="status">…</span></header>
+  <div class="server-battery">
+    <span class="battery-icon"><div class="battery-fill" id="batteryFill"></div></span>
+    <span id="batteryText">server battery —</span>
+  </div>
   <div class="clock" id="clock"></div>
   <div class="info" id="info"></div>
 
@@ -173,7 +181,16 @@ function closeModal() { modal.classList.add('hidden'); }
 function shutdown() { closeModal(); cmd('shutdown', 'shutting down…'); }
 function t3() { const b=document.getElementById('t3btn'); cmd(b.dataset.action, b.dataset.action==='t3-open'?'opening t3 code…':'closing t3 code…'); }
 
-setInterval(()=>{ document.getElementById('clock').textContent = new Date().toLocaleString(); refresh(); }, 1000);
+function refreshBattery(){
+  fetch('/battery',{cache:'no-store'}).then(r=>r.json()).then(b=>{
+    if(b.level==null)return;
+    document.getElementById('batteryFill').style.width=b.level+'%';
+    document.getElementById('batteryText').textContent='server battery '+b.level+'%'+(b.charging?' ⚡':'');
+  }).catch(()=>{});
+}
+
+setInterval(()=>{ document.getElementById('clock').textContent = new Date().toLocaleString(); refresh(); refreshBattery(); }, 1000);
+refreshBattery();
 refresh();
 </script>
 </body>

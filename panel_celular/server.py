@@ -89,6 +89,30 @@ def write_json(path, data):
     os.replace(tmp, path)
 
 
+def get_battery():
+    """Nivel de batería del celular (el mini-servidor)."""
+    try:
+        out = subprocess.check_output(
+            ["dumpsys", "battery"], stderr=subprocess.DEVNULL, text=True, timeout=3)
+        level, charging = None, False
+        for line in out.splitlines():
+            if "level:" in line:
+                level = int(line.split(":", 1)[1].strip())
+            elif "powered:" in line and "true" in line:
+                charging = True
+            elif "status:" in line and line.split(":", 1)[1].strip() == "2":
+                charging = True
+        return {"level": level, "charging": charging}
+    except Exception:
+        try:
+            out = subprocess.check_output(
+                ["termux-battery-status"], stderr=subprocess.DEVNULL, text=True, timeout=3)
+            d = json.loads(out)
+            return {"level": d.get("percentage"), "charging": d.get("status") == "CHARGING"}
+        except Exception:
+            return {"level": None, "charging": False}
+
+
 def get_version():
     return read_json(VERSION_FILE, {}).get("sha", "local")
 
@@ -473,6 +497,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, _estado_cache)
         elif path == "/version":
             self._send(200, {"sha": get_version(), "repo": REPO or "local"})
+        elif path == "/battery":
+            self._send(200, get_battery())
         else:
             self._send(404, {"error": "no encontrado"})
 
