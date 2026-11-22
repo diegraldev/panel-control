@@ -59,6 +59,10 @@ button:active{color:#050505;background:var(--accent);border-color:var(--accent);
 button:focus-visible{outline:1px solid var(--accent);outline-offset:3px}
 .primary{color:#050505;background:var(--accent);border-color:var(--accent)}
 .primary:hover{color:#050505;background:var(--accent);border-color:var(--accent)}
+.toggle{flex:none;min-width:0;width:44px;height:24px;padding:2px;border-radius:999px;border:1px solid rgb(255 255 255 / .18);background:transparent;position:relative;display:flex;align-items:center}
+.toggle .knob{width:18px;height:18px;border-radius:50%;background:#fafafa;transition:transform .25s var(--ease),background .25s}
+.toggle[aria-pressed="true"]{background:var(--accent);border-color:var(--accent)}
+.toggle[aria-pressed="true"] .knob{transform:translateX(20px);background:#050505}
 .msg{font-size:.75rem;color:var(--muted);margin-top:1.5rem;text-align:center;min-height:1.2em}
 .offline{text-align:center;padding:3.5rem 0}
 .offline .title{font-size:1.125rem;font-weight:500;letter-spacing:-.01em;margin-bottom:.5rem}
@@ -82,7 +86,6 @@ button:focus-visible{outline:1px solid var(--accent);outline-offset:3px}
   <div class="info" id="info"></div>
 
   <div id="content" class="hidden">
-    <div class="section">system</div>
     <div class="row"><span class="k">ram<span class="sub" id="ramDetail"></span></span><span class="v" id="ram">—</span></div>
     <div class="row"><span class="k">cpu</span><span class="v" id="cpu">—</span></div>
     <div id="gpus"></div>
@@ -93,6 +96,10 @@ button:focus-visible{outline:1px solid var(--accent);outline-offset:3px}
     <div class="buttons"><button id="t3btn" onclick="t3()">…</button></div>
 
     <div class="section">power</div>
+    <div class="row" style="align-items:center">
+      <span class="k">sleep mode</span>
+      <button id="sleepBtn" class="toggle" onclick="toggleSleep()" aria-pressed="false"><span class="knob"></span></button>
+    </div>
     <div class="buttons">
       <button id="shutdownBtn" onclick="confirmShutdown()">shut down</button>
     </div>
@@ -180,6 +187,13 @@ function confirmShutdown() { modal.classList.remove('hidden'); }
 function closeModal() { modal.classList.add('hidden'); }
 function shutdown() { closeModal(); cmd('shutdown', 'shutting down…'); }
 function t3() { const b=document.getElementById('t3btn'); cmd(b.dataset.action, b.dataset.action==='t3-open'?'opening t3 code…':'closing t3 code…'); }
+
+function toggleSleep() {
+  const b = document.getElementById('sleepBtn');
+  const turningOn = b.getAttribute('aria-pressed') !== 'true';
+  cmd(turningOn ? 'sleep-on' : 'sleep-off', turningOn ? 'sleep mode on…' : 'sleep mode off…');
+  b.setAttribute('aria-pressed', String(turningOn));
+}
 
 function refreshBattery(){
   fetch('/battery',{cache:'no-store'}).then(r=>r.json()).then(b=>{

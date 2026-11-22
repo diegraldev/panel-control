@@ -61,7 +61,7 @@ WAKE_TOKEN = os.environ.get("WAKE_TOKEN", "")
 WAKE_URL = os.environ.get("WAKE_URL", "http://100.69.149.63:8091/wake")
 ALLOWED_HOSTS = {h.strip().lower() for h in os.environ.get("ALLOWED_HOSTS", "").split(",") if h.strip()}
 
-CMD_VALUES = ("shutdown", "wake", "cancelar", "t3-open", "t3-close")
+CMD_VALUES = ("shutdown", "wake", "cancelar", "t3-open", "t3-close", "sleep-on", "sleep-off")
 
 # ---------------------------------------------------------------- state cache
 _state_lock = threading.Lock()

@@ -515,6 +515,23 @@ def close_t3():
     return f"closing T3 Code ({killed})"
 
 
+def sleep_mode(mode):
+    """Baja/restaura brillo, volumen y RGB via systemd-run --user."""
+    env = _session_env()
+    launch = [
+        "/usr/bin/systemd-run", "--user", "--scope", "--collect",
+        "--unit=panel-sleep", "/usr/local/lib/panel-pc/sleep-mode.sh", mode,
+    ]
+    for key in ("DISPLAY", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE",
+                "XDG_CURRENT_DESKTOP", "XDG_RUNTIME_DIR",
+                "DBUS_SESSION_BUS_ADDRESS", "XDG_DATA_DIRS"):
+        if env.get(key):
+            launch.insert(5, f"{key}={env[key]}")
+    subprocess.Popen(launch, env=env, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True)
+    return f"sleep {mode}"
+
+
 def run_command(cmd):
     print(f"[CMD] {cmd}", flush=True)
     if cmd == "cancelar":
@@ -542,6 +559,8 @@ def run_command(cmd):
         return open_t3()
     if cmd == "t3-close":
         return close_t3()
+    if cmd in ("sleep-on", "sleep-off"):
+        return sleep_mode("on" if cmd == "sleep-on" else "off")
     return "unknown"
 
 
