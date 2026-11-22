@@ -554,9 +554,14 @@ def run_command(cmd):
         return "shutdown canceled" if cancel_shutdown() else "nothing pending"
     if cmd == "shutdown":
         # Escribir el flag ANTES de apagar: así existe cuando arranque
-        # wol-autologin.service, sin depender de que el celular avise tarde.
-        subprocess.run(["/usr/bin/sudo", "-n", "/usr/local/lib/panel-pc/wol-flag-set.sh"],
-                       check=False)
+        # wol-autologin.service. Sin sudo (el directorio es del usuario), porque
+        # el agente corre con contexto de servicio y su sudo no funciona.
+        try:
+            os.makedirs("/var/lib/wol-autologin", exist_ok=True)
+            with open("/var/lib/wol-autologin/pending", "w") as f:
+                f.write("wol")
+        except Exception:
+            pass
         # Apago inmediato via dbus/logind (igual que el boton del escritorio).
         r = subprocess.run([
             "/usr/bin/gdbus", "call", "--system",
