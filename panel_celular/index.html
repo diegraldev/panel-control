@@ -3,78 +3,98 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#ffffff">
+<meta name="theme-color" content="#050505">
+<meta name="color-scheme" content="dark">
 <title>Remote Control</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='18' y='20' width='64' height='44' rx='5' fill='none' stroke='%23000' stroke-width='6'/%3E%3Cpath d='M10 74h80l-6-10H16z' fill='%23000'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%23050505'/%3E%3Crect x='18' y='20' width='64' height='44' rx='5' fill='none' stroke='%2322d3ee' stroke-width='6'/%3E%3Cpath d='M10 74h80l-6-10H16z' fill='%2322d3ee'/%3E%3C/svg%3E">
 <style>
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  body { margin:0; background:#fff; color:#000; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; padding:28px 20px 48px; }
-  .wrap { max-width:480px; margin:0 auto; }
-  header { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:4px; }
-  h1 { font-size:20px; margin:0; font-weight:600; letter-spacing:-0.02em; }
-  .status { font-size:12px; color:#888; }
-  .server-battery { display:flex; align-items:center; gap:6px; font-size:11px; color:#aaa; margin-top:2px; }
-  .battery-icon { width:22px; height:11px; border:1px solid #000; border-radius:2px; position:relative; padding:1px; box-sizing:border-box; }
-  .battery-icon::after { content:''; position:absolute; right:-4px; top:3px; width:2px; height:5px; background:#000; border-radius:0 1px 1px 0; }
-  .battery-fill { height:100%; background:#000; border-radius:1px; transition:width .4s; }
-  .clock { font-size:12px; color:#aaa; margin-bottom:20px; }
-  .info { font-size:13px; color:#888; line-height:1.7; margin:0 0 28px; }
-  .info b { color:#000; font-weight:500; }
-  .row { display:flex; align-items:baseline; justify-content:space-between; padding:14px 0; border-bottom:1px solid #e8e8e8; }
-  .row:first-child { border-top:1px solid #e8e8e8; }
-  .k { font-size:12px; color:#888; text-transform:uppercase; letter-spacing:.08em; }
-  .k .sub { font-size:11px; color:#aaa; display:block; text-transform:none; letter-spacing:0; line-height:1.4; }
-  .v { font-size:26px; font-weight:600; letter-spacing:-0.03em; font-variant-numeric:tabular-nums; text-align:right; }
-  .v small { font-size:13px; color:#888; font-weight:400; }
-  .v.ram-detail { font-size:13px; font-weight:400; color:#888; text-align:left; line-height:1.4; }
-  .section { font-size:11px; color:#aaa; text-transform:uppercase; letter-spacing:.1em; margin:28px 0 8px; }
-  .buttons { display:flex; gap:10px; }
-  button { flex:1; padding:16px; font-size:15px; font-weight:600; font-family:inherit; border-radius:10px; cursor:pointer; transition:opacity .15s; }
-  button:active { opacity:.6; }
-  .primary { background:#000; color:#fff; border:1px solid #000; }
-  .secondary { background:#fff; color:#000; border:1px solid #000; }
-  .msg { font-size:12px; color:#888; margin-top:18px; text-align:center; }
-  .offline { text-align:center; padding:60px 0; }
-  .offline .title { font-size:18px; font-weight:600; margin-bottom:8px; }
-  .offline p { font-size:13px; color:#888; }
-  .hidden { display:none !important; }
-  .modal { position:fixed; inset:0; background:rgba(255,255,255,.9); display:flex; align-items:center; justify-content:center; padding:24px; z-index:10; }
-  .modal .box { background:#fff; border:1px solid #000; border-radius:14px; padding:26px; max-width:320px; width:100%; text-align:center; }
-  .modal h2 { margin:0 0 10px; font-size:18px; }
-  .modal p { color:#888; font-size:13px; line-height:1.6; margin:0 0 22px; }
+@font-face {
+  font-family:"Geist Mono";
+  src:url("https://cdn.jsdelivr.net/npm/geist@1.2.0/dist/fonts/geist-mono/GeistMono-Regular.woff2") format("woff2");
+  font-weight:400; font-style:normal; font-display:swap;
+}
+@font-face {
+  font-family:"Geist Mono";
+  src:url("https://cdn.jsdelivr.net/npm/geist@1.2.0/dist/fonts/geist-mono/GeistMono-Medium.woff2") format("woff2");
+  font-weight:500; font-style:normal; font-display:swap;
+}
+:root{
+  color-scheme:dark;
+  --void:#050505; --surface:#0a0a0a; --muted:#8a8a8a; --subtle:#d4d4d4;
+  --text:#fafafa; --accent:#22d3ee;
+  --line:rgb(250 250 250 / .06); --line-strong:rgb(250 250 250 / .1);
+  --font-mono:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;
+  --ease:cubic-bezier(.16,1,.3,1);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{background:var(--void);-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--void);color:var(--text);font-family:var(--font-mono);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;padding:0 1.25rem 3rem;overflow-x:hidden}
+::selection{background:rgb(34 211 238 / .2)}
+h1,h2,p{margin:0}
+.wrap{position:relative;z-index:1;width:100%;max-width:36rem;margin:0 auto;padding-top:3.5rem}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;margin-bottom:1.75rem;padding-bottom:1rem;border-bottom:1px solid var(--line)}
+h1{font-size:1.25rem;font-weight:400;letter-spacing:-.025em}
+h1 b{color:#fff;font-weight:400}
+.status{font-size:.8125rem;color:#fff;white-space:nowrap;font-variant-numeric:tabular-nums}
+.status.online{color:var(--accent)}
+.clock{font-size:.75rem;color:var(--muted);margin:-1rem 0 1.5rem;font-variant-numeric:tabular-nums}
+.info{font-size:.8125rem;color:var(--muted);line-height:1.7;margin:0 0 2rem;font-variant-numeric:tabular-nums}
+.info b{color:#fff;font-weight:400}
+.section{font-size:.8125rem;font-weight:500;letter-spacing:.01em;color:#fff;margin:2.5rem 0 .9rem;padding-top:1rem;border-top:1px solid var(--line)}
+.row{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;padding:.65rem 0;border-bottom:1px solid var(--line)}
+.k{font-size:.8125rem;color:#fff;line-height:1.5}
+.k .sub{font-size:.75rem;color:#5c5c5c;display:block;line-height:1.4;margin-top:.1rem}
+.v{font-size:.9375rem;font-weight:500;letter-spacing:-.01em;text-align:right;font-variant-numeric:tabular-nums;color:var(--text)}
+.v small{font-size:.75rem;color:var(--muted);font-weight:400}
+.v.ram-detail{font-size:.75rem;font-weight:400;color:var(--muted);text-align:left;line-height:1.4}
+.buttons{display:flex;gap:.6rem;flex-wrap:wrap}
+button{flex:1;min-width:8rem;padding:.8rem 1rem;font-size:.8125rem;font-family:inherit;letter-spacing:.01em;color:#fff;background:transparent;border:1px solid rgb(255 255 255 / .18);border-radius:.5rem;cursor:pointer;transition:color .2s ease,border-color .2s ease,background .2s ease,opacity .15s}
+button:hover{color:var(--accent);border-color:var(--accent);background:transparent}
+button:active{color:#050505;background:var(--accent);border-color:var(--accent);opacity:1}
+button:focus-visible{outline:1px solid var(--accent);outline-offset:3px}
+.primary{color:#050505;background:var(--accent);border-color:var(--accent)}
+.primary:hover{color:#050505;background:var(--accent);border-color:var(--accent)}
+.msg{font-size:.75rem;color:var(--muted);margin-top:1.5rem;text-align:center;min-height:1.2em}
+.offline{text-align:center;padding:3.5rem 0}
+.offline .title{font-size:1.125rem;font-weight:500;letter-spacing:-.01em;margin-bottom:.5rem}
+.offline p{font-size:.8125rem;color:var(--muted)}
+.hidden{display:none !important}
+.modal{position:fixed;inset:0;background:rgb(5 5 5 / .92);display:flex;align-items:center;justify-content:center;padding:1.5rem;z-index:10;}
+.modal .box{background:var(--surface);border:1px solid var(--line-strong);border-radius:.75rem;padding:1.75rem;max-width:22rem;width:100%;text-align:center}
+.modal h2{margin:0 0 .6rem;font-size:1.0625rem;font-weight:500;letter-spacing:-.01em}
+.modal p{color:var(--muted);font-size:.8125rem;line-height:1.6;margin:0 0 1.5rem}
+@media (max-width:560px){.wrap{padding-top:2.5rem}.section{margin-top:2rem}}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header><h1>Remote Control</h1><span class="status" id="status">…</span></header>
-  <div class="server-battery">
-    <span class="battery-icon"><div class="battery-fill" id="batteryFill"></div></span>
-    <span id="batteryText">Server battery —</span>
-  </div>
+  <header><h1>remote<b>_control</b></h1><span class="status" id="status">…</span></header>
   <div class="clock" id="clock"></div>
   <div class="info" id="info"></div>
 
   <div id="content" class="hidden">
-    <div class="row"><span class="k">RAM<span class="sub" id="ramDetail"></span></span><span class="v" id="ram">—</span></div>
-    <div class="row"><span class="k">CPU</span><span class="v" id="cpu">—</span></div>
+    <div class="section">system</div>
+    <div class="row"><span class="k">ram<span class="sub" id="ramDetail"></span></span><span class="v" id="ram">—</span></div>
+    <div class="row"><span class="k">cpu</span><span class="v" id="cpu">—</span></div>
     <div id="gpus"></div>
-    <div class="row"><span class="k">CPU Temp</span><span class="v" id="cputemp">—</span></div>
-    <div class="row"><span class="k">NVIDIA GPU Temp</span><span class="v" id="nvidiatemp">—</span></div>
+    <div class="row"><span class="k">cpu temp</span><span class="v" id="cputemp">—</span></div>
+    <div class="row"><span class="k">nvidia gpu temp</span><span class="v" id="nvidiatemp">—</span></div>
 
-    <div class="section">T3 Code</div>
-    <div class="buttons"><button class="secondary" id="t3btn" onclick="t3()">…</button></div>
+    <div class="section">t3 code</div>
+    <div class="buttons"><button id="t3btn" onclick="t3()">…</button></div>
 
-    <div class="section">Power</div>
+    <div class="section">power</div>
     <div class="buttons">
-      <button class="secondary" id="shutdownBtn" onclick="confirmShutdown()">Shut down</button>
+      <button id="shutdownBtn" onclick="confirmShutdown()">shut down</button>
     </div>
   </div>
 
   <div id="pcOff" class="offline hidden">
-    <div class="title">PC is off</div>
+    <div class="title">pc is off</div>
     <p>No connection to the PC.</p>
-    <div class="buttons" style="margin-top:28px">
-      <button class="primary" onclick="wake()">Wake up</button>
+    <div class="buttons" style="margin-top:1.75rem">
+      <button class="primary" onclick="wake()">wake up</button>
     </div>
   </div>
 
@@ -83,11 +103,11 @@
 
 <div class="modal hidden" id="modal">
   <div class="box" onclick="event.stopPropagation()">
-    <h2>Shut down the PC?</h2>
+    <h2>shut down the pc?</h2>
     <p>This will power off the PC immediately.</p>
     <div class="buttons">
-      <button class="secondary" onclick="closeModal()">Cancel</button>
-      <button class="primary" onclick="shutdown()">Shut down</button>
+      <button onclick="closeModal()">cancel</button>
+      <button class="primary" onclick="shutdown()">shut down</button>
     </div>
   </div>
 </div>
@@ -99,11 +119,12 @@ modal.onclick = closeModal;
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
 function refresh() {
-  fetch('/status').then(r=>r.json()).then(d=>{
+  fetch('/status', {cache:'no-store'}).then(r=>r.json()).then(d=>{
     const now = Date.now();
     const online = !!d.recibido_en_celular && (now - (d.recibido_ts || 0) * 1000) < TIMEOUT;
     const s = document.getElementById('status');
     s.textContent = online ? '● online' : '○ offline';
+    s.classList.toggle('online', online);
     document.getElementById('content').classList.toggle('hidden', !online);
     document.getElementById('pcOff').classList.toggle('hidden', online);
     if (!online) return;
@@ -119,9 +140,9 @@ function refresh() {
     const list = (d.gpus || []).map(g => {
       if (g.type === 'nvidia') {
         if (g.temp != null) nvidiaTemp = Math.round(g.temp) + '<small>°C</small>';
-        return `<div class="row"><span class="k">NVIDIA GPU<span class="sub">${g.name || ''}</span></span><span class="v">${g.usage != null ? Math.round(g.usage) + '<small>%</small>' : '—'}</span></div>`;
+        return `<div class="row"><span class="k">nvidia gpu<span class="sub">${g.name || ''}</span></span><span class="v">${g.usage != null ? Math.round(g.usage) + '<small>%</small>' : '—'}</span></div>`;
       }
-      return `<div class="row"><span class="k">Intel GPU<span class="sub">${g.name || ''}</span></span><span class="v">${g.usage != null ? Math.round(g.usage) + '<small>%</small>' : '—'}</span></div>`;
+      return `<div class="row"><span class="k">intel gpu<span class="sub">${g.name || ''}</span></span><span class="v">${g.usage != null ? Math.round(g.usage) + '<small>%</small>' : '—'}</span></div>`;
     }).join('');
     document.getElementById('gpus').innerHTML = list;
     document.getElementById('nvidiatemp').innerHTML = nvidiaTemp;
@@ -130,10 +151,11 @@ function refresh() {
       '<b>' + (d.hostname||'?') + '</b> · ' + (d.ip||'?');
 
     const t = document.getElementById('t3btn');
-    t.textContent = d.t3_open ? 'Close T3 Code' : 'Open T3 Code';
+    t.textContent = d.t3_open ? 'close t3 code' : 'open t3 code';
     t.dataset.action = d.t3_open ? 't3-close' : 't3-open';
   }).catch(()=>{
     document.getElementById('status').textContent = '○ offline';
+    document.getElementById('status').classList.remove('online');
     document.getElementById('content').classList.add('hidden');
     document.getElementById('pcOff').classList.remove('hidden');
   });
@@ -145,23 +167,14 @@ function cmd(c, m) {
   .then(r=>r.json()).then(()=>document.getElementById('msg').textContent='✓ '+m)
   .catch(e=>document.getElementById('msg').textContent='Error: '+e);
 }
-function wake() { cmd('wake', 'Sending magic packet…'); }
+function wake() { cmd('wake', 'sending magic packet…'); }
 function confirmShutdown() { modal.classList.remove('hidden'); }
 function closeModal() { modal.classList.add('hidden'); }
-function shutdown() { closeModal(); cmd('shutdown', 'Shutting down in 8s…'); }
-function t3() { const b=document.getElementById('t3btn'); cmd(b.dataset.action, b.dataset.action==='t3-open'?'Opening T3 Code…':'Closing T3 Code…'); }
+function shutdown() { closeModal(); cmd('shutdown', 'shutting down…'); }
+function t3() { const b=document.getElementById('t3btn'); cmd(b.dataset.action, b.dataset.action==='t3-open'?'opening t3 code…':'closing t3 code…'); }
 
-function refreshBattery() {
-  fetch('/battery').then(r=>r.json()).then(b=>{
-    if (b.level == null) return;
-    document.getElementById('batteryFill').style.width = b.level + '%';
-    document.getElementById('batteryText').textContent =
-      'Server battery ' + b.level + '%' + (b.charging ? ' ⚡' : '');
-  }).catch(()=>{});
-}
-
-setInterval(()=>{ document.getElementById('clock').textContent = new Date().toLocaleString(); refresh(); refreshBattery(); }, 2000);
-refresh(); refreshBattery();
+setInterval(()=>{ document.getElementById('clock').textContent = new Date().toLocaleString(); refresh(); }, 1000);
+refresh();
 </script>
 </body>
 </html>

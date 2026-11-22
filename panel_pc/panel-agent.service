@@ -1,0 +1,23 @@
+[Unit]
+Description=Agente del panel de control (envia estado al celular)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=PANEL_URL=http://100.113.245.28:8080
+Environment=PC_MAC=d8:bb:c1:22:1a:d1
+WorkingDirectory=/usr/local/lib/panel-pc
+ExecStart=/usr/bin/python3 /usr/local/lib/panel-pc/agent.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+
+# Instalar como servicio de USUARIO (~/.config/systemd/user/), no como servicio
+# de sistema. El agente necesita el contexto SELinux de la sesion (unconfined_u)
+# para que T3 Code, lanzado desde aqui, pueda usar sudo/pkexec normalmente.
+# Como servicio de sistema (unconfined_service_t) la app abria sin permisos de
+# administracion. No hace falta CAP_PERFMON: perf_event_paranoid=2 permite
+# intel_gpu_top sin privilegios.
