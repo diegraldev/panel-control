@@ -226,15 +226,29 @@ def run_command(cmd):
         # so CAP_SYS_ADMIN is missing and AppImage's FUSE mount fails with
         # "Permission denied". Extract-and-run skips FUSE entirely.
         env["APPIMAGE_EXTRACT_AND_RUN"] = "1"
-        # Pedir a systemd --user que abra T3 Code. Asi el proceso nace con el
-        # contexto SELinux de la sesion (unconfined_u), no con el del agente
-        # (unconfined_service_t), que romperia sudo en la sesión de T3 Code.
+        # Launch in a transient USER scope. T3 Code then runs with the desktop
+        # session's SELinux context (unconfined_u) and full user privileges, so
+        # sudo/pkexec work inside the app. A oneshot --user service cannot be
+        # used: systemd kills its cgroup as soon as gtk-launch returns.
+        launch = [
+            "/usr/bin/systemd-run", "--user", "--scope", "--collect",
+            "--unit=t3code-panel",
+        ]
+        for key in (
+            "DISPLAY", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE",
+            "XDG_CURRENT_DESKTOP", "XDG_SESSION_DESKTOP", "XDG_RUNTIME_DIR",
+            "DBUS_SESSION_BUS_ADDRESS", "XDG_DATA_DIRS",
+            "APPIMAGE_EXTRACT_AND_RUN",
+        ):
+            if env.get(key):
+                launch.append(f"--setenv={key}={env[key]}")
+        launch += ["/usr/bin/gtk-launch", "com.t3tools.T3Code"]
         subprocess.Popen(
-            ["/usr/bin/systemctl", "--user", "start", "panel-open-t3.service"],
-            env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            launch, env=env,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
-        return "opening T3 Code (user session)"
+        return "opening T3 Code (user scope)"
     if cmd == "t3-close":
         # -x targets only real T3 Code processes; -f would kill anything whose
         # command line happens to contain "t3code" (other shells, editors...).
