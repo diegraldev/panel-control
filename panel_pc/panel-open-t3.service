@@ -1,0 +1,6 @@
+[Unit]
+Description=Abrir T3 Code con el contexto de la sesion del usuario
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/panel-pc/open-t3.sh

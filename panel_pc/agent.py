@@ -226,13 +226,15 @@ def run_command(cmd):
         # so CAP_SYS_ADMIN is missing and AppImage's FUSE mount fails with
         # "Permission denied". Extract-and-run skips FUSE entirely.
         env["APPIMAGE_EXTRACT_AND_RUN"] = "1"
-        # gtk-launch opens the .desktop shortcut exactly like clicking it.
+        # Pedir a systemd --user que abra T3 Code. Asi el proceso nace con el
+        # contexto SELinux de la sesion (unconfined_u), no con el del agente
+        # (unconfined_service_t), que romperia sudo en la sesión de T3 Code.
         subprocess.Popen(
-            ["gtk-launch", "com.t3tools.T3Code"], env=env,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            ["/usr/bin/systemctl", "--user", "start", "panel-open-t3.service"],
+            env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
-        return "opening T3 Code (gtk-launch)"
+        return "opening T3 Code (user session)"
     if cmd == "t3-close":
         # -x targets only real T3 Code processes; -f would kill anything whose
         # command line happens to contain "t3code" (other shells, editors...).
