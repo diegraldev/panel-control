@@ -520,13 +520,14 @@ def sleep_mode(mode):
     env = _session_env()
     launch = [
         "/usr/bin/systemd-run", "--user", "--scope", "--collect",
-        "--unit=panel-sleep", "/usr/local/lib/panel-pc/sleep-mode.sh", mode,
+        "--unit=panel-sleep",
     ]
     for key in ("DISPLAY", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE",
                 "XDG_CURRENT_DESKTOP", "XDG_RUNTIME_DIR",
                 "DBUS_SESSION_BUS_ADDRESS", "XDG_DATA_DIRS"):
         if env.get(key):
-            launch.insert(5, f"{key}={env[key]}")
+            launch.append(f"--setenv={key}={env[key]}")
+    launch += ["/usr/local/lib/panel-pc/sleep-mode.sh", mode]
     subprocess.Popen(launch, env=env, stdout=subprocess.DEVNULL,
                      stderr=subprocess.DEVNULL, start_new_session=True)
     return f"sleep {mode}"
