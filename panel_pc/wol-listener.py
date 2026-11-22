@@ -39,4 +39,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    ThreadingHTTPServer(("100.69.149.63", 8091), Handler).serve_forever()
+    # Escuchar en todas las interfaces: al arrancar, Tailscale quizá aún no
+    # tiene asignada su IP, pero 0.0.0.0 siempre está disponible.
+    ThreadingHTTPServer(("0.0.0.0", 8091), Handler).serve_forever()

@@ -179,6 +179,9 @@ def run_command(cmd):
     if cmd == "cancelar":
         return "shutdown canceled" if cancel_shutdown() else "nothing pending"
     if cmd == "shutdown":
+        # Escribir el flag ANTES de apagar: así existe cuando arranque
+        # wol-autologin.service, sin depender de que el celular avise tarde.
+        subprocess.run(["/usr/bin/sudo", "-n", "/usr/local/lib/panel-pc/wol-flag-set.sh"], check=False)
         # Apago inmediato via dbus/logind (igual que el boton del escritorio), sin sudo.
         subprocess.run([
             "/usr/bin/gdbus", "call", "--system",
