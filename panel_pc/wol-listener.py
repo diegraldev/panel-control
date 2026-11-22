@@ -15,9 +15,10 @@ FLAG = os.path.join(FLAG_DIR, "pending")
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == "/wake":
-            os.makedirs(FLAG_DIR, exist_ok=True)
-            with open(FLAG, "w") as f:
-                f.write("wol")
+            # NO escribir el flag aquí: la señal llega cuando la PC ya arrancó,
+            # después de que wol-autologin consumió el flag. Reescribirlo aquí
+            # contaminaría el SIGUIENTE arranque (autologin en arranques manuales).
+            # El flag lo escribe únicamente el agente al apagar.
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b"ok")
