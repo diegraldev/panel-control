@@ -1,30 +1,30 @@
-## Resumen
+## Summary
 
-<!-- 1–3 frases: qué cambia y para qué. -->
+<!-- 1–3 sentences: what changes and why. -->
 
-## Motivación / contexto
+## Motivation / context
 
-<!-- Issue relacionado, problema observado o decisión que se aplica. -->
+<!-- Related issue, observed problem or decision being applied. -->
 Closes #
 
-## Cambio
+## Change
 
-<!-- Qué archivos y por qué. Un bullet por archivo relevante. -->
+<!-- Which files and why. One bullet per relevant file. -->
 
 - `panel_celular/...`:
 - `panel_pc/...`:
-- Documentación (`AGENTS.md` / `docs/`):
+- Documentation (`AGENTS.md` / `docs/`):
 
-## Compatibilidad
+## Contract compatibility
 
-- [ ] Contrato HTTP intacto (endpoints, campos JSON y comandos; ver `docs/AGENT_CONTEXT.md` §2).
-- [ ] Se respetan las reglas de `AGENTS.md` (servicio --user, sin sudo desde el agente,
-      sin forks en el hot path, caché de batería en background, seguridad Host/Origin/token).
-- [ ] Si aplica, `docs/DECISIONS.md` tiene una entrada nueva.
+- [ ] HTTP contract intact (endpoints, JSON fields and commands; see `docs/AGENT_CONTEXT.md` §2).
+- [ ] Rules in `AGENTS.md` are respected (user service, no sudo from the agent,
+      no forks in the hot path, background battery cache, Host/Origin/token security).
+- [ ] If applicable, `docs/DECISIONS.md` has a new entry.
 
-## Pruebas
+## Tests
 
-<!-- Evidencia real: comandos ejecutados y su salida. No basta con "funciona". -->
+<!-- Real evidence: commands run and their output. "It works" is not enough. -->
 
 ```bash
 python3 -m py_compile panel_celular/server.py panel_celular/wol.py panel_pc/agent.py panel_pc/wol-listener.py
@@ -32,27 +32,27 @@ bash -n panel_celular/boot_panel panel_pc/*.sh
 git diff --check
 ```
 
-Verificación manual (curl / journalctl / screenshot / antes-después):
+Manual verification (curl / journalctl / screenshot / before-after):
 
 ```text
 
 ```
 
-## Impacto
+## Impact
 
-- Rendimiento / latencia:
-- Consumo de batería del celular:
-- Seguridad (tokens, Host/Origin, superficie Tailscale):
-- Deploy: ¿reinicia `server.py`? ¿Afecta a los long-poll del agente?
+- Performance / latency:
+- Phone battery consumption:
+- Security (tokens, Host/Origin, Tailscale surface):
+- Deploy: does it restart `server.py`? Does it affect agent long-polls?
 
-## Riesgo / rollback
+## Risk / rollback
 
-<!-- Qué puede salir mal tras el auto-deploy de 10 s y cómo revertir rápido. -->
+<!-- What can go wrong after the 10 s auto-deploy and how to revert quickly. -->
 
 ## Checklist
 
-- [ ] `py_compile` y `bash -n` pasan.
-- [ ] `git diff --check` limpio.
-- [ ] Sin credenciales, IPs de prueba ni rutas personales nuevas sin justificación.
-- [ ] Documentación actualizada si el comportamiento operativo cambió.
-- [ ] No se hicieron commits/pushes salvo petición explícita del usuario.
+- [ ] `py_compile` and `bash -n` pass.
+- [ ] `git diff --check` clean.
+- [ ] No credentials, test IPs or new personal paths without justification.
+- [ ] Documentation updated if operational behavior changed.
+- [ ] No commits/pushes made unless explicitly requested by the user.

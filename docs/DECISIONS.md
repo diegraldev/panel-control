@@ -1,128 +1,130 @@
-# Decisiones de arquitectura (ADR simple)
+# Architecture decisions (simple ADRs)
 
-Formato corto: **Contexto → Decisión → Consecuencias**. Cuando tomes una decisión
-nueva, añade una entrada. Esto evita que un agente futuro "arregle" algo que ya se
-probó que no funciona. Los números de commit son del historial real de `main`.
+Short format: **Context → Decision → Consequences**. When you make a new decision,
+add an entry. This prevents a future agent from "fixing" something that was already
+tested and rejected. Commit numbers refer to the real history of `main`.
 
 ---
 
-## ADR-001 — Agente del PC como servicio de **usuario**, no de sistema
-(`b8d99e8`, confirmado en `panel-agent.service`)
+## ADR-001 — PC agent as a USER service, not a system service
+(`b8d99e8`, confirmed in `panel-agent.service`)
 
-- **Contexto:** T3 Code se lanza desde el agente. Como servicio de sistema el
-  contexto SELinux es `unconfined_service_t`, que hereda la app ⇒ `sudo`/`pkexec`
-  fallan dentro de T3 Code aunque la app abre.
-- **Decisión:** instalar `panel-agent.service` en `~/.config/systemd/user/` y
-  habilitarlo con `systemctl --user`. `WantedBy=default.target`.
-- **Consecuencias:** el agente hereda `unconfined_u` de la sesión; requiere que
-  exista una sesión gráfica del usuario. No hace falta `CAP_PERFMON`:
-  `perf_event_paranoid=2` permite `intel_gpu_top` sin privilegios.
+- **Context:** T3 Code is launched from the agent. As a system service the SELinux
+  context is `unconfined_service_t`, which the app inherits ⇒ `sudo`/`pkexec`
+  fail inside T3 Code even though the app opens.
+- **Decision:** install `panel-agent.service` in `~/.config/systemd/user/` and
+  enable it with `systemctl --user`. `WantedBy=default.target`.
+- **Consequences:** the agent inherits `unconfined_u` from the desktop session;
+  a graphical user session must exist. No `CAP_PERFMON` is needed:
+  `perf_event_paranoid=2` allows `intel_gpu_top` without privileges.
 
-## ADR-002 — T3 Code vía AppImage extract-and-run + scope transitorio
+## ADR-002 — T3 Code via AppImage extract-and-run + transient scope
 (`ce9b663`, `e6f1c24`, `128a556`, `fe119fb`)
 
-- **Contexto:** el servicio restringe capabilities (sin `CAP_SYS_ADMIN`) ⇒ el
-  montaje FUSE del AppImage falla con "Permission denied". Además un servicio
-  oneshot `--user` muere en cuanto `gtk-launch` termina (systemd limpia el cgroup).
-- **Decisión:** `APPIMAGE_EXTRACT_AND_RUN=1` y lanzar con
+- **Context:** the service restricts capabilities (no `CAP_SYS_ADMIN`) ⇒ the
+  AppImage FUSE mount fails with "Permission denied". Also, a `--user` oneshot
+  service dies as soon as `gtk-launch` ends (systemd tears down the cgroup).
+- **Decision:** `APPIMAGE_EXTRACT_AND_RUN=1` and launch with
   `systemd-run --user --scope --collect --unit=t3code-panel /usr/bin/gtk-launch com.t3tools.T3Code`,
-  pasando el entorno completo de la sesión (`--setenv=...`).
-- **Consecuencias:** la app sobrevive a reinicios del agente y mantiene el contexto
-  de sesión; el cname del proceso es `t3code` (detección y cierre por `/proc/*/comm`).
+  passing the full session environment via `--setenv=...`.
+- **Consequences:** the app survives agent restarts and keeps the session context;
+  the process comm is `t3code` (used for detection and shutdown via `/proc/*/comm`).
 
-## ADR-003 — Auto-deploy por Atom feed con ETag, no por API REST
+## ADR-003 — Auto-deploy via Atom feed with ETag, not the REST API
 (`e5606b7`)
 
-- **Contexto:** el celular consulta GitHub cada 10 s; la API REST tiene rate limit
-  (60 req/h sin token) y cada respuesta consume cuota.
-- **Decisión:** leer `commits/main.atom` con `If-None-Match`. Un 304 cuesta 0 bytes
-  y 0 unidades de cuota. REST queda solo como fallback si falla el feed.
-- **Consecuencias:** despliegue en ~10 s sin token; requiere que `REPO_URL` esté
-  definido (lo pone `boot_panel`). El ETag se guarda en `version.json`.
+- **Context:** the phone checks GitHub every 10 s; the REST API has a rate limit
+  (60 req/h unauthenticated) and every response consumes quota.
+- **Decision:** read `commits/main.atom` with `If-None-Match`. A 304 costs 0 bytes
+  and 0 quota units. REST remains only as a fallback if the feed fails.
+- **Consequences:** deployment in ~10 s without a token; requires `REPO_URL` to
+  be set (done by `boot_panel`). The ETag is stored in `version.json`.
 
-## ADR-004 — Reiniciar solo si cambia `server.py`
+## ADR-004 — Restart only if `server.py` changed
 (`panel_celular/server.py::check_and_deploy`)
 
-- **Contexto:** reiniciar el servidor corta los long-poll del agente y puede
-  perder estado en memoria si no se vuelca.
-- **Decisión:** comparar bytes de los tres archivos desplegables; `index.html` y
-  `wol.py` se reemplazan en caliente; `server.py` se vuelca (`_flush_state`) y se
-  reinicia con `os.execv`.
-- **Consecuencias:** los cambios de UI llegan sin interrupción; los cambios de
-  servidor son atómicos pero reinician el proceso.
+- **Context:** restarting the server interrupts agent long-polls and can lose
+  in-memory state unless it is flushed.
+- **Decision:** compare bytes of the three deployable files; `index.html` and
+  `wol.py` are replaced hot; `server.py` is flushed (`_flush_state`) and the
+  process is restarted with `os.execv`.
+- **Consequences:** UI changes arrive without interruption; server changes are
+  atomic but restart the process.
 
-## ADR-005 — Estado en memoria + escritura diferida a 5 s
+## ADR-005 — In-memory state + deferred 5 s disk writes
 (`store_status`)
 
-- **Contexto:** el agente publica cada 1 s; escribir `status.json` en cada POST
-  desgasta la flash del celular y abre ventana de lecturas parciales.
-- **Decisión:** caché en memoria con `threading.Lock`, `write_json()` atómico
-  (tmp + `os.replace`) y compulsory disk write como máximo cada 5 s. Al reiniciar
-  se vuelca el estado (`_flush_state`).
-- **Consecuencias:** `status.json` puede ir hasta 5 s por detrás de la memoria;
-  el navegador siempre ve el dato fresco vía `/status`.
+- **Context:** the agent publishes every 1 s; writing `status.json` on every POST
+  wears the phone's flash and opens a window for partial reads.
+- **Decision:** in-memory cache with `threading.Lock`, atomic `write_json()`
+  (tmp + `os.replace`) and a disk write at most every 5 s. State is flushed on
+  restart (`_flush_state`).
+- **Consequences:** `status.json` can lag up to 5 s behind memory; the browser
+  always sees fresh data via `/status`.
 
-## ADR-006 — Long-poll + dos conexiones keep-alive en el agente
+## ADR-006 — Long-poll + two keep-alive connections in the agent
 (`e5606b7`)
 
-- **Contexto:** con polling simple, un comando tardaba hasta un intervalo en
-  llegar (6.4 s medidos) y un `GET /cmd?wait=10` bloqueaba la publicación de estado.
-- **Decisión:** el panel soporta `GET /cmd?wait=N` con `threading.Condition`; el
-  agente usa un `Client` para publicar y otro para comandos, ambos HTTP/1.1
-  keep-alive, con `TCP_NODELAY` en el servidor y timeout de socket para no
-  fugas de hilos.
-- **Consecuencias:** comandos en ~2 ms; el publish nunca se detiene; si el
-  long-poll falla, el agente cae a polling corto y reintenta.
+- **Context:** with plain polling, a command took up to one interval to arrive
+  (6.4 s measured), and a `GET /cmd?wait=10` blocked status publishing.
+- **Decision:** the panel supports `GET /cmd?wait=N` with `threading.Condition`;
+  the agent uses one `Client` for publishing and another for commands, both
+  HTTP/1.1 keep-alive, with `TCP_NODELAY` on the server and a socket timeout to
+  avoid thread leaks.
+- **Consequences:** commands arrive in ~2 ms; publishing never stops; if the
+  long-poll fails, the agent falls back to short polling and retries.
 
-## ADR-007 — Batería y wake fuera del handler HTTP
+## ADR-007 — Battery and wake outside the HTTP handler
 (`833757e`, `fca7d4c`, `441aa05`, `2dc3cd5`)
 
-- **Contexto:** llamar a `termux-battery-status` (o `dumpsys`) dentro del handler
-  bloqueaba/crashaba la conexión; conectar al listener con la PC apagada colgaba
-  la respuesta hasta el socket timeout.
-- **Decisión:** hilo daemon que actualiza `_battery_cache` cada 30 s y `/battery`
-  solo lee la caché; `wake_pc_async()` envía el magic packet y avisa al listener
-  en un hilo daemon. `termux-wake-lock` evita que Android suspenda el server.
-- **Consecuencias:** el endpoint de batería no cuesta nada por request; la UI
-  puede consultarlo cada 1 s sin impacto; la respuesta de `wake` es inmediata.
-  **Cualquier optimización de batería futura debe preservar este patrón.**
+- **Context:** calling `termux-battery-status` (or `dumpsys`) inside the handler
+  blocked/crashed the connection; connecting to the listener with the PC off
+  hung the response until the socket timeout.
+- **Decision:** a daemon thread updates `_battery_cache` every 30 s and `/battery`
+  only reads the cache; `wake_pc_async()` sends the magic packet and notifies the
+  listener in a daemon thread. `termux-wake-lock` prevents Android from
+  suspending the server.
+- **Consequences:** the battery endpoint is free per request; the UI can poll it
+  every 1 s at no cost; the `wake` response is immediate.
+  **Any future battery optimization must preserve this pattern.**
 
-## ADR-008 — Apagado sin sudo: gdbus/logind + regla polkit
+## ADR-008 — Shutdown without sudo: gdbus/logind + polkit rule
 (`898fdbb`, `b59313b`)
 
-- **Contexto:** el agente corre con contexto de servicio y su `sudo` no funciona.
-- **Decisión:** apagar con `gdbus call --system ... Manager.PowerOff false` y
-  permitir la acción para `diegral` mediante `polkit-poweroff.rules`. El flag de
-  autologin se escribe directamente en `/var/lib/wol-autologin/pending` (sin sudo).
-- **Consecuencias:** apagado inmediato sin cuenta atrás; requiere la regla polkit
-  instalada en `/etc/polkit-1/rules.d/`.
+- **Context:** the agent runs with a service context and its `sudo` does not work.
+- **Decision:** shut down with `gdbus call --system ... Manager.PowerOff false` and
+  allow the action for `diegral` via `polkit-poweroff.rules`. The autologin flag
+  is written directly to `/var/lib/wol-autologin/pending` (without sudo).
+- **Consequences:** immediate shutdown with no countdown; requires the polkit
+  rule installed in `/etc/polkit-1/rules.d/`.
 
-## ADR-009 — Flag de WoL lo escribe el apagado, no el listener
+## ADR-009 — The WoL flag is written at shutdown, not by the listener
 (`45503da`)
 
-- **Contexto:** el celular avisa al listener justo antes del magic packet, pero
-  para entonces la PC **ya arrancó** y `wol-autologin.sh` ya consumió/borró el flag.
-  Escribirlo en el listener lo dejaría para el arranque manual siguiente.
-- **Decisión:** `run_command("shutdown")` escribe el flag antes de apagar;
-  `wol-listener.py::do_POST` solo responde `ok` y no toca disco.
-- **Consecuencias:** autologin solo tras un apagado iniciado desde el panel;
-  arranques manuales siguen pidiendo contraseña.
+- **Context:** the phone notifies the listener just before the magic packet, but
+  by then the PC has **already booted** and `wol-autologin.sh` has already
+  consumed/deleted the flag. Writing it in the listener leaves it for the next
+  manual boot.
+- **Decision:** `run_command("shutdown")` writes the flag before powering off;
+  `wol-listener.py::do_POST` only replies `ok` and touches no disk.
+- **Consequences:** autologin only after a shutdown initiated from the panel;
+  manual boots still ask for a password.
 
-## ADR-010 — Permisos RGB por udev, no por sudo
+## ADR-010 — RGB permissions via udev, not sudo
 (`e24ac32`, `fe73ae6`, `panel_pc/99-panel-rgb.rules`, `panel-rgb-perms.service`)
 
-- **Contexto:** `sleep-mode.sh` necesita escribir en sysfs de LEDs; `sudo` no está
-  disponible desde el agente.
-- **Decisión:** regla udev `MODE=0666, TAG+=uaccess` + servicio oneshot que
-  hace `chmod 666` en arranque por si udev no aplicó.
-- **Consecuencias:** el modo sleep funciona sin credenciales elevadas.
+- **Context:** `sleep-mode.sh` needs to write LED sysfs nodes; `sudo` is not
+  available from the agent.
+- **Decision:** udev rule `MODE=0666, TAG+=uaccess` plus a oneshot service that
+  runs `chmod 666` at boot in case udev did not apply it.
+- **Consequences:** sleep mode works without elevated credentials.
 
-## ADR-011 — Contrato estable, estilo cambiante
+## ADR-011 — Stable contract, changing style
 (`16195f8`, `README.md`)
 
-- **Contexto:** se hicieron mejoras de rendimiento y un rediseño visual (mono,
-  negro/blanco con acento cian).
-- **Decisión:** conservar todos los endpoints, campos JSON y comandos; cambiar
-  solo estilos y organización interna.
-- **Consecuencias:** el panel y el agente pueden evolucionar de forma independiente
-  mientras el contrato se respete. Los tests/verificación se centran en ese contrato.
+- **Context:** performance improvements and a visual redesign took place
+  (monochrome, black/white with cyan accents).
+- **Decision:** keep every endpoint, JSON field and command; change only styles
+  and internal organization.
+- **Consequences:** panel and agent can evolve independently as long as the
+  contract is respected. Tests/verification focus on that contract.

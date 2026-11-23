@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Contexto para agentes
+  - name: Agent context
     url: https://github.com/diegraldev/remotecontrol/blob/main/AGENTS.md
-    about: Antes de reportar, lee la memoria del repo y el contexto detallado en docs/.
-  - name: Decisiones de arquitectura
+    about: Before reporting, read the repo memory and the detailed context in docs/.
+  - name: Architecture decisions
     url: https://github.com/diegraldev/remotecontrol/blob/main/docs/DECISIONS.md
-    about: Comprueba si el comportamiento observado es una decisión ya tomada.
+    about: Check whether the observed behavior is an already documented decision.

@@ -1,117 +1,123 @@
-# AGENTS.md — memoria del repo remotecontrol
+# AGENTS.md — memory for the remotecontrol repo
 
-Lee esto primero. Es la memoria corta para agentes: hechos que NO se deducen
-fácilmente del código, reglas y el check para verificar cambios. La guía detallada
-está en `docs/AGENT_CONTEXT.md` y las decisiones en `docs/DECISIONS.md`.
+Read this first. It is the short memory for agents: facts that cannot easily be
+deduced from the code, the rules, and the check used to verify changes. The detailed
+guide is in `docs/AGENT_CONTEXT.md` and the decisions in `docs/DECISIONS.md`.
 
-## Propósito
+## Purpose
 
-Panel web minimalista servido desde un **celular Android con Termux sobre Tailscale**
-para vigilar y controlar un PC: estado (CPU/RAM/GPU/temps), Wake-on-LAN, apagado,
-abrir/cerrar T3 Code y modo sleep. No es un producto genérico: es un único dispositivo
-real (IPs y MAC fijas, rutas absolutas en `/home/diegral`).
+A minimal web panel served from an **Android phone running Termux over Tailscale**
+to monitor and control a PC: status (CPU/RAM/GPU/temps), Wake-on-LAN, shutdown,
+opening/closing T3 Code, and sleep mode. This is not a generic product: it targets a
+single real device (fixed IPs and MAC, absolute paths under `/home/diegral`).
 
-## Arquitectura (flujo)
+## Architecture (flow)
 
-- `panel_celular/server.py` — servidor HTTP en el celular (puerto 8080). Guarda estado
-  en memoria + archivos JSON atómicos. Expone `/status`, `/cmd` (long-poll `?wait=N`),
-  `/cmd/ack`, `/estado`, `/battery`, `/version`. Auto-deploy: consulta el Atom feed
-  `https://github.com/diegraldev/remotecontrol/commits/main.atom` cada `DEPLOY_POLL`
-  (10 s) con `If-None-Match` (304 = 0 bytes, sin consumir rate limit de la API).
-  Descarga el tarball de `main`, copia `index.html`, `server.py`, `wol.py`; solo
-  reinicia (`os.execv`) si cambió `server.py`.
-- `panel_celular/index.html` — UI mono (negro/blanco + cian). Llama a `/status` y
-  `/battery` cada 1 s. `TIMEOUT=15000` ms sin estado ⇒ muestra "pc is off".
-- `panel_celular/boot_panel` — script de Termux:Boot: `termux-wake-lock`, arranca
-  `python3 server.py` con `REPO_URL=diegraldev/remotecontrol` si no está corriendo.
-- `panel_pc/agent.py` — agente en el PC (usuario `diegral`). Publica estado cada
-  `PANEL_INTERVAL` (1 s) y hace long-poll de comandos. Dos conexiones keep-alive
-  separadas (publicar vs. comandos) para que un `wait=10` no bloquee el publish.
-  Muestreo en background: CPU por delta de `/proc/stat`, temps desde sysfs,
-  GPUs con `nvidia-smi -lms` / `intel_gpu_top` persistentes, IP por ioctl caché.
-- `panel_pc/wol-listener.py` — servicio **root** en el PC, puerto 8091, `POST /wake`.
-  NO escribe el flag de autologin (ese flag lo escribe el agente **al apagar**;
-  escribirlo aquí contaminaría el siguiente arranque manual — ver DECISIONS).
-- `panel_pc/wol-autologin.sh` — antes de SDDM: si existe `/var/lib/wol-autologin/pending`,
-  habilita autologin a niri y borra el flag; si no, deshabilita autologin.
-- `panel_pc/sleep-mode.sh` — brillo/volumen/RGB a 0 (`on`) y restauración (`off`),
-  invocado por `systemd-run --user --scope`.
+- `panel_celular/server.py` — HTTP server on the phone (port 8080). Keeps state in
+  memory + atomic JSON files. Exposes `/status`, `/cmd` (long-poll `?wait=N`),
+  `/cmd/ack`, `/estado`, `/battery`, `/version`. Auto-deploy: polls the Atom feed
+  `https://github.com/diegraldev/remotecontrol/commits/main.atom` every `DEPLOY_POLL`
+  (10 s) with `If-None-Match` (304 = 0 bytes, no API rate limit consumed).
+  Downloads the `main` tarball, copies `index.html`, `server.py`, `wol.py`; it only
+  restarts (`os.execv`) if `server.py` changed.
+- `panel_celular/index.html` — monochrome UI (black/white + cyan). Calls `/status` and
+  `/battery` every 1 s. `TIMEOUT=15000` ms without state ⇒ shows "pc is off".
+- `panel_celular/boot_panel` — Termux:Boot script: `termux-wake-lock`, starts
+  `python3 server.py` with `REPO_URL=diegraldev/remotecontrol` if it is not running.
+- `panel_pc/agent.py` — agent on the PC (user `diegral`). Publishes status every
+  `PANEL_INTERVAL` (1 s) and long-polls for commands. Two separate keep-alive
+  connections (publishing vs. commands) so a `wait=10` never blocks publishing.
+  Background sampling: CPU from `/proc/stat` deltas, temps from sysfs,
+  GPUs from persistent `nvidia-smi -lms` / `intel_gpu_top`, IP from cached ioctl.
+- `panel_pc/wol-listener.py` — **root** service on the PC, port 8091, `POST /wake`.
+  It does NOT write the autologin flag (that flag is written by the agent **at
+  shutdown**; writing it here would corrupt the next manual boot — see DECISIONS).
+- `panel_pc/wol-autologin.sh` — before SDDM: if `/var/lib/wol-autologin/pending`
+  exists, enable autologin to niri and remove the flag; otherwise disable autologin.
+- `panel_pc/sleep-mode.sh` — brightness/volume/RGB to 0 (`on`) and restore (`off`),
+  invoked via `systemd-run --user --scope`.
 
-## Reglas para agentes (no negociables)
+## Rules for agents (non-negotiable)
 
-1. **No romper el contrato HTTP**: mismos endpoints, mismos campos JSON, mismos
-   comandos (`shutdown`, `wake`, `cancelar`, `t3-open`, `t3-close`, `sleep-on`,
-   `sleep-off`). `index.html` y el agente son consumidores; cambiar un nombre rompe el panel.
-2. **El agente PC debe ser servicio de USUARIO** (`systemctl --user`), nunca de sistema.
-   Como sistema obtiene contexto SELinux `unconfined_service_t` y T3 Code no puede
-   usar `sudo`/`pkexec`. Con --user hereda `unconfined_u` de la sesión.
-3. **No usar `sudo` desde el agente**: corre con contexto de servicio. Escribir el flag
-   de WoL directamente (el directorio es del usuario) y apagar vía gdbus/logind + polkit.
-4. **T3 Code se lanza con `APPIMAGE_EXTRACT_AND_RUN=1`** (sin FUSE: faltan capabilities)
-   y en `systemd-run --user --scope` transitorio (un servicio oneshot --user mata el
-   cgroup al terminar `gtk-launch`). Clonar el entorno completo de la sesión gráfica.
-5. **No reintroducir forks en el hot path** (`sensors`, `pgrep`, `hostname -I`,
-   `nvidia-smi` por muestra). El rendimiento actual es 3 ms/recolección, 1.2% CPU.
-6. **Batería del celular**: `termux-battery-status` se llama en un hilo background
-   cada 30 s con caché; NUNCA dentro del handler HTTP (bloqueaba/crashaba la conexión).
-   El wake PC va en hilo daemon: la respuesta HTTP no debe esperar a la PC apagada.
-7. **Seguridad**: mantener `_guard` (Host + Origin + `X-Panel-Token` opcional en
-   POST). Respetar `ALLOWED_HOSTS` y el rango tailnet `100.64.0.0/10`.
-8. **Idempotencia de comandos**: el agente guarda `(comando, ts)` en `last_key` y
-   omite duplicados si se perdió el ack. No eliminar ese mecanismo.
-9. No hacer commits/pushes salvo petición explícita; dejar cambios en el working tree.
-10. Escribir respuestas y comentarios nuevos en español; el código existente mezcla
-    inglés/español, mantén consistencia con el archivo que toques.
+1. **Do not break the HTTP contract**: same endpoints, same JSON fields, same
+   commands (`shutdown`, `wake`, `cancelar`, `t3-open`, `t3-close`, `sleep-on`,
+   `sleep-off`). `index.html` and the agent are consumers; renaming anything
+   breaks the panel.
+2. **The PC agent must be a USER service** (`systemctl --user`), never a system
+   service. As a system service it gets the `unconfined_service_t` SELinux context
+   and T3 Code cannot use `sudo`/`pkexec`. With `--user` it inherits `unconfined_u`
+   from the session.
+3. **Do not use `sudo` from the agent**: it runs with a service context. Write the
+   WoL flag directly (the directory is user-owned) and shut down via
+   gdbus/logind + polkit.
+4. **T3 Code is launched with `APPIMAGE_EXTRACT_AND_RUN=1`** (no FUSE: capabilities
+   are missing) in a transient `systemd-run --user --scope` (a oneshot --user
+   service kills the cgroup when `gtk-launch` finishes). Clone the full graphical
+   session environment.
+5. **Do not reintroduce forks in the hot path** (`sensors`, `pgrep`, `hostname -I`,
+   `nvidia-smi` per sample). Current performance is 3 ms per collection, 1.2% CPU.
+6. **Phone battery**: `termux-battery-status` is called in a background thread
+   every 30 s with caching; NEVER inside the HTTP handler (it blocked/crashed the
+   connection). PC wake runs in a daemon thread: the HTTP response must not wait
+   for the powered-off PC.
+7. **Security**: keep `_guard` (Host + Origin + optional `X-Panel-Token` on POST).
+   Respect `ALLOWED_HOSTS` and the tailnet range `100.64.0.0/10`.
+8. **Command idempotency**: the agent stores `(comando, ts)` in `last_key` and
+   skips duplicates if an ack was lost. Do not remove this mechanism.
+9. Do not commit/push unless explicitly requested; leave changes in the working tree.
+10. **Write all documentation, issues, comments and responses in English.** Existing
+    code mixes English and Spanish; match the file you are editing, but all new
+    prose must be in English.
 
-## Comandos útiles
+## Useful commands
 
 ```bash
-# Verificar sintaxis (no hay test suite; esto es el check mínimo obligatorio)
+# Check syntax (there is no test suite; this is the mandatory minimum check)
 python3 -m py_compile panel_celular/server.py panel_celular/wol.py panel_pc/agent.py panel_pc/wol-listener.py
 bash -n panel_celular/boot_panel panel_pc/*.sh
 
-# Probar el servidor localmente (sin deploy, sin Termux)
+# Test the server locally (no deploy, no Termux)
 cd panel_celular && PORT=8080 python3 server.py
 curl -s localhost:8080/version && curl -s localhost:8080/status
 
-# Ver el commit desplegado en el celular
+# Check the commit deployed on the phone
 curl -s http://100.113.245.28:8080/version
 
-# PC: estado de los servicios
+# PC: service status
 systemctl --user status panel-agent.service
 systemctl status wol-listener.service wol-autologin.service panel-rgb-perms.service
 journalctl --user -u panel-agent.service -f
-PANEL_DEBUG=1 python3 panel_pc/agent.py   # logs de comandos
+PANEL_DEBUG=1 python3 panel_pc/agent.py   # command logs
 ```
 
-## Cómo verificar cambios
+## How to verify changes
 
-1. `python3 -m py_compile` en todos los `.py` tocados + `bash -n` en los `.sh`.
-2. Si tocaste `server.py`/`index.html`: levantar el server en local y comprobar que
-   `/status`, `/version`, `/battery` y `/cmd?wait=1` responden y que un `POST /cmd`
-   válido llega por long-poll seguido de `POST /cmd/ack`.
-3. Si tocaste el agente: comprobar que el JSON publicado conserva todas las claves
+1. `python3 -m py_compile` on every `.py` touched + `bash -n` on the `.sh` files.
+2. If you touched `server.py`/`index.html`: start the server locally and check that
+   `/status`, `/version`, `/battery` and `/cmd?wait=1` respond, and that a valid
+   `POST /cmd` arrives via long-poll followed by `POST /cmd/ack`.
+3. If you touched the agent: verify the published JSON keeps every key
    (`hostname, ip, ram, cpu_percent, cpu_temp, gpus, t3_open, sleep_active, timestamp`).
-4. Confirmar que `git diff --check` no reporta whitespace roto.
+4. Confirm `git diff --check` reports no broken whitespace.
 
 ## Gotchas
 
-- La UI considera la PC "offline" si `recibido_ts` tiene >15 s; el publish debe seguir
-  fluyendo aunque no haya comandos.
-- `store_status()` escribe a disco **como máximo cada 5 s**; si haces debug de
-  `status.json` puede estar desactualizado respecto a la memoria.
-- `wol.py` existe dos veces: `./wol.py` (raíz) y `panel_celular/wol.py`; el deploy
-  actualiza solo la copia de `panel_celular/`. Mantener ambas sincronizadas.
-- Las IPs `100.113.245.28` (celular) y `100.69.149.63:8091` (listener) y la MAC
-  `d8:bb:c1:22:1a:d1` son datos reales del entorno; no son ejemplos.
-- `REPORT.html` se eliminó en el último commit; el README aún lo menciona: no lo
-  recrees salvo que se pida, pero tampoco dejes referencias rotas nuevas.
-- `DEPLOY_POLL` solo tiene efecto si `REPO_URL` está definido (lo pone `boot_panel`).
+- The UI considers the PC "offline" if `recibido_ts` is older than 15 s; publishing
+  must keep flowing even when there are no commands.
+- `store_status()` writes to disk **at most every 5 s**; when debugging,
+  `status.json` may lag behind memory.
+- `wol.py` exists twice: `./wol.py` (root) and `panel_celular/wol.py`; deploy only
+  updates the `panel_celular/` copy. Keep both in sync.
+- The IPs `100.113.245.28` (phone) and `100.69.149.63:8091` (listener) and the MAC
+  `d8:bb:c1:22:1a:d1` are real environment data; they are not examples.
+- `REPORT.html` was deleted in the last commit; the README no longer refers to it.
+  Do not recreate it unless asked, and do not add new broken references.
+- `DEPLOY_POLL` only takes effect if `REPO_URL` is set (set by `boot_panel`).
 
-## Índice de documentación
+## Documentation index
 
-- `README.md` — resumen de usuario y puesta en marcha.
-- `docs/AGENT_CONTEXT.md` — contexto detallado: flowchart, env vars, superficie HTTP,
-  gotchas operativos, checklist de verificación.
-- `docs/DECISIONS.md` — decisiones de arquitectura ya tomadas (ADR simple).
-- `.github/ISSUE_TEMPLATE/` y `.github/PULL_REQUEST_TEMPLATE.md` — plantillas.
+- `README.md` — user summary and getting started.
+- `docs/AGENT_CONTEXT.md` — detailed context: flow chart, env vars, HTTP surface,
+  operational gotchas, verification checklist.
+- `docs/DECISIONS.md` — architecture decisions already made (simple ADRs).
+- `.github/ISSUE_TEMPLATE/` and `.github/PULL_REQUEST_TEMPLATE.md` — templates.

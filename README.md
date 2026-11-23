@@ -7,21 +7,21 @@ It shows the PC status and can wake it (Wake-on-LAN), shut it down, and open/clo
 - `panel_celular/` — Python server + HTML + wol.py + auto-deploy + boot script
 - `panel_pc/` — PC agent (RAM, CPU, GPU usage/temps, T3 Code, commands)
 
-## Documentation / para agentes
+## Documentation / for agents
 
-Si eres un agente (o vas a pedirle trabajo a uno), empieza por **[AGENTS.md](AGENTS.md)**:
-memoria corta con las reglas no negociables, comandos y cómo verificar cambios.
-Después consulta:
+If you are an agent (or about to hand work to one), start with **[AGENTS.md](AGENTS.md)**:
+short memory with the non-negotiable rules, useful commands and how to verify changes.
+Then consult:
 
-- [docs/AGENT_CONTEXT.md](docs/AGENT_CONTEXT.md) — arquitectura detallada, contrato
-  HTTP, variables de entorno, servicios systemd, flujo de auto-deploy y gotchas.
-- [docs/DECISIONS.md](docs/DECISIONS.md) — decisiones ya tomadas (ADR simple):
-  servicio de usuario vs. sistema, AppImage extract-and-run, caché de batería,
-  Atom feed sin rate limit, flag de WoL, etc. **No las revertiles sin nueva decisión.**
-- [.github/ISSUE_TEMPLATE/](.github/ISSUE_TEMPLATE/) — plantillas de bug, feature
-  e investigación/optimización (contexto, evidencia, criterios de aceptación).
-- [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) — resumen,
-  pruebas, impacto, riesgo/rollback y checklist.
+- [docs/AGENT_CONTEXT.md](docs/AGENT_CONTEXT.md) — detailed architecture, HTTP
+  contract, environment variables, systemd services, auto-deploy flow and gotchas.
+- [docs/DECISIONS.md](docs/DECISIONS.md) — decisions already made (simple ADRs):
+  user vs. system service, AppImage extract-and-run, battery cache, rate-limit-free
+  Atom feed, WoL flag, etc. **Do not revert them without a new decision.**
+- [.github/ISSUE_TEMPLATE/](.github/ISSUE_TEMPLATE/) — bug, feature and
+  research/optimization templates (context, evidence, acceptance criteria).
+- [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) — summary,
+  tests, impact, risk/rollback and checklist.
 
 ## Auto-deploy
 The phone polls GitHub every 10s (`DEPLOY_POLL`, via a cached Atom feed that costs
@@ -50,7 +50,7 @@ in a transient **`systemd-run --user --scope`**, so it survives agent restarts a
 the session context.
 
 ## Performance / stability / security improvements
-Summary (mediciones del reporte original, disponible en el historial de git):
+Summary (measurements from the original report, available in git history):
 state collection 1750 ms → 3 ms, command latency 6.4 s → 0.002 s,
 agent CPU 13.9% → 1.2%, 0% read loss, CORS/Host restrictions and auto-deploy
 without consuming GitHub API rate limit. The interface keeps all endpoints,

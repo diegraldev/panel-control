@@ -1,161 +1,163 @@
-# Contexto detallado para agentes — remotecontrol
+# Detailed agent context — remotecontrol
 
-Documento de referencia. Para la memoria corta (reglas y checks) ver `../AGENTS.md`.
-Para el *por qué* de las decisiones ver `DECISIONS.md`.
+Reference document. For the short memory (rules and checks) see `../AGENTS.md`.
+For the *why* behind decisions see `DECISIONS.md`.
 
-## 1. Mapa del sistema
+## 1. System map
 
 ```
-   [ Celular Android / Termux ]                 [ PC Fedora / usuario diegral ]
+   [ Android phone / Termux ]                 [ PC / Fedora / user diegral ]
    ┌──────────────────────────┐                 ┌───────────────────────────────┐
    │ panel_celular/server.py  │  Tailscale      │ panel_pc/agent.py (--user)    │
-   │  HTTP :8080              │<─── POST /status│  publica cada 1 s             │
-   │  estado en memoria+JSON  │     GET /cmd    │  long-poll /cmd?wait=10       │
-   │  auto-deploy (Atom feed) │─── comandos────>│  ejecuta: shutdown/wake/t3/.. │
-   │  /battery (cache 30 s)   │                 │  gdbus -> logind -> poweroff  │
+   │  HTTP :8080              │<─── POST /status│  publishes every 1 s           │
+   │  state in memory+JSON    │     GET /cmd    │  long-poll /cmd?wait=10       │
+   │  auto-deploy (Atom feed) │─── commands────>│  runs: shutdown/wake/t3/...    │
+   │  /battery (30 s cache)   │                 │  gdbus -> logind -> poweroff  │
    └────────────┬─────────────┘                 └────────────┬──────────────────┘
-                │ POST /wake (fire&forget)                   │ escribe flag
-                │ (X-Wake-Token opcional)                    │ /var/lib/wol-autologin/pending
+                │ POST /wake (fire & forget)                 │ writes flag
+                │ (optional X-Wake-Token)                    │ /var/lib/wol-autologin/pending
                 v                                            v
    ┌──────────────────────────┐                 ┌───────────────────────────────┐
-   │ magic packet UDP :9      │                 │ wol-autologin.sh (antes SDDM) │
-   │ (wake_pc_async, hilo)    │                 │ habilita autologin si hay flag│
+   │ magic packet UDP :9      │                 │ wol-autologin.sh (before SDDM)│
+   │ (wake_pc_async, thread)  │                 │ enables autologin if flag set │
    └──────────────────────────┘                 └───────────────────────────────┘
 ```
 
-Arranque del celular: `Termux:Boot` ejecuta `panel_celular/boot_panel`
-(`termux-wake-lock` + `nohup python3 server.py` con `REPO_URL`).
+Phone boot: `Termux:Boot` runs `panel_celular/boot_panel`
+(`termux-wake-lock` + `nohup python3 server.py` with `REPO_URL`).
 
-## 2. Superficie HTTP (contrato; no cambiar nombres)
+## 2. HTTP surface (contract; do not rename)
 
-| Método | Ruta | Quién la usa | Efecto |
+| Method | Path | Used by | Effect |
 |---|---|---|---|
-| GET | `/` , `/index.html` | navegador | HTML con gzip + ETag (304 si no cambió) |
-| GET | `/status` | navegador | último estado cacheado (`recibido_ts`, `recibido_en_celular`) |
-| POST | `/status` | agente PC | guarda estado (memoria; disco ≤1 vez/5 s) |
-| GET | `/cmd?wait=N` | agente PC | long-poll hasta que llega un comando (N≤30) |
-| POST | `/cmd` | navegador | encola `{"comando": ..., "ts": ...}`; `wake` dispara packet async |
-| POST | `/cmd/ack` | agente PC | guarda resultado y limpia la cola |
-| GET | `/ack` | debug | último resultado |
-| GET | `/estado` | debug | blob libre |
-| POST | `/estado_cmd` | debug | guarda blob libre |
-| GET | `/battery` | navegador | `{"level": %, "charging": bool}` desde caché 30 s |
+| GET | `/` , `/index.html` | browser | HTML with gzip + ETag (304 if unchanged) |
+| GET | `/status` | browser | latest cached state (`recibido_ts`, `recibido_en_celular`) |
+| POST | `/status` | PC agent | stores state (memory; disk at most once per 5 s) |
+| GET | `/cmd?wait=N` | PC agent | long-poll until a command arrives (N≤30) |
+| POST | `/cmd` | browser | queues `{"comando": ..., "ts": ...}`; `wake` fires packet async |
+| POST | `/cmd/ack` | PC agent | stores result and clears the queue |
+| GET | `/ack` | debug | last command result |
+| GET | `/estado` | debug | free-form blob |
+| POST | `/estado_cmd` | debug | stores free-form blob |
+| GET | `/battery` | browser | `{"level": %, "charging": bool}` from the 30 s cache |
 | GET | `/version` | debug / deploy | `{"sha": ..., "repo": ...}` |
 
-Comandos válidos (`CMD_VALUES`): `shutdown`, `wake`, `cancelar`, `t3-open`,
+Valid commands (`CMD_VALUES`): `shutdown`, `wake`, `cancelar`, `t3-open`,
 `t3-close`, `sleep-on`, `sleep-off`.
 
-Campos del JSON de estado publicado por el agente (todos conservar):
+State JSON fields published by the agent (keep all of them):
 `hostname`, `ip`, `ram` (total_mb/used_mb/free_mb/percent), `cpu_percent`,
 `cpu_temp` (max/source), `gpus` (name/usage/temp/type), `t3_open`, `sleep_active`,
-`timestamp`. El servidor añade `recibido_en_celular` y `recibido_ts`.
+`timestamp`. The server adds `recibido_en_celular` and `recibido_ts`.
 
-## 3. Variables de entorno
+## 3. Environment variables
 
-Servidor (`panel_celular/server.py`):
+Phone server (`panel_celular/server.py`):
 
-| Var | Default | Uso |
+| Var | Default | Purpose |
 |---|---|---|
-| `PORT` | `8080` | puerto de escucha |
-| `PC_MAC` | `d8:bb:c1:22:1a:d1` | MAC para WoL |
-| `REPO_URL` | `""` (deploy desactivado) | `owner/repo` para auto-deploy |
-| `REPO_TOKEN` | `""` | Bearer para descargar el tarball (repo privado) |
-| `DEPLOY_POLL` | `10` | segundos entre chequeos del feed Atom |
-| `PANEL_TOKEN` | `""` | si se define, exige `X-Panel-Token` o `?token=` en POST |
-| `WAKE_TOKEN` | `""` | se envía como `X-Wake-Token` al listener |
-| `WAKE_URL` | `http://100.69.149.63:8091/wake` | listener root en el PC |
-| `ALLOWED_HOSTS` | `""` | hosts extra permitidos (comma-separated) |
+| `PORT` | `8080` | listen port |
+| `PC_MAC` | `d8:bb:c1:22:1a:d1` | MAC for WoL |
+| `REPO_URL` | `""` (deploy disabled) | `owner/repo` for auto-deploy |
+| `REPO_TOKEN` | `""` | Bearer token to download the tarball (private repo) |
+| `DEPLOY_POLL` | `10` | seconds between Atom feed checks |
+| `PANEL_TOKEN` | `""` | if set, requires `X-Panel-Token` or `?token=` on POST |
+| `WAKE_TOKEN` | `""` | sent as `X-Wake-Token` to the listener |
+| `WAKE_URL` | `http://100.69.149.63:8091/wake` | root listener on the PC |
+| `ALLOWED_HOSTS` | `""` | extra allowed hosts, comma-separated |
 
-Agente (`panel_pc/agent.py`):
+PC agent (`panel_pc/agent.py`):
 
-| Var | Default | Uso |
+| Var | Default | Purpose |
 |---|---|---|
-| `PANEL_URL` | `http://100.113.245.28:8080` | URL del panel |
-| `PANEL_INTERVAL` | `1` | s entre publicaciones de estado |
-| `PC_MAC` | `d8:bb:c1:22:1a:d1` | usada por `wake` |
-| `T3_APPIMAGE` | ruta absoluta en `~/Downloads` | AppImage a lanzar |
-| `GPU_SAMPLE_PERIOD` | `2` | ventana de muestreo GPU |
-| `PANEL_TOKEN` | `""` | token para los POST al panel |
-| `PANEL_DEBUG` | `""` | `1` activa logs de comandos |
+| `PANEL_URL` | `http://100.113.245.28:8080` | panel URL |
+| `PANEL_INTERVAL` | `1` | seconds between status publishes |
+| `PC_MAC` | `d8:bb:c1:22:1a:d1` | used by `wake` |
+| `T3_APPIMAGE` | absolute path in `~/Downloads` | AppImage to launch |
+| `GPU_SAMPLE_PERIOD` | `2` | GPU sampling window |
+| `PANEL_TOKEN` | `""` | token for POSTs to the panel |
+| `PANEL_DEBUG` | `""` | `1` enables command logs |
 
-`panel-agent.service` fija `PANEL_URL` y `PC_MAC` en el Environment del unit.
+`panel-agent.service` pins `PANEL_URL` and `PC_MAC` in the unit Environment.
 
-## 4. Servicios systemd en el PC
+## 4. systemd services on the PC
 
-| Unidad | Tipo / contexto | Función |
+| Unit | Type / context | Function |
 |---|---|---|
-| `panel-agent.service` | **--user**, `WantedBy=default.target` | agente; ver regla SELinux en AGENTS.md |
-| `wol-listener.service` | sistema (root), puerto 8091 | recibe la señal de wake del celular |
-| `wol-autologin.service` | sistema, `Before=sddm.service` | configura autologin condicional |
-| `panel-rgb-perms.service` | sistema, oneshot | `chmod 666` de sysfs LEDs RGB |
-| `panel-sleep.service` | plantilla oneshot (con `%i` = on/off) | brillo/volumen/RGB; la usa `sleep-mode.sh` vía `systemd-run --user --scope` |
+| `panel-agent.service` | **--user**, `WantedBy=default.target` | agent; see the SELinux rule in AGENTS.md |
+| `wol-listener.service` | system (root), port 8091 | receives the wake signal from the phone |
+| `wol-autologin.service` | system, `Before=sddm.service` | conditional autologin setup |
+| `panel-rgb-perms.service` | system, oneshot | `chmod 666` of RGB LED sysfs nodes at boot |
+| `panel-sleep.service` | oneshot template (`%i` = on/off) | brightness/volume/RGB; used by `sleep-mode.sh` via `systemd-run --user --scope` |
 
-Reglas auxiliares: `99-panel-rgb.rules` (udev, permisos LED),
-`polkit-poweroff.rules` (permite poweroff/reboot al usuario `diegral`).
+Auxiliary rules: `99-panel-rgb.rules` (udev, LED permissions),
+`polkit-poweroff.rules` (allows poweroff/reboot for user `diegral`).
 
-## 5. Auto-deploy, paso a paso
+## 5. Auto-deploy, step by step
 
-1. `deploy_loop()` llama `check_and_deploy()` al arrancar y cada `DEPLOY_POLL`.
-2. `remote_sha()` pide `commits/main.atom` con `If-None-Match: <etag guardado>`.
-   - Si hay cambios: parsea `<id>tag:github.com,2008:Grit::Commit/<sha></id>`.
-   - Si `304`: devuelve el SHA local y conserva el ETag ⇒ cero bytes, cero API.
-   - Si falla el feed: fallback a REST `/repos/.../commits?per_page=1&sha=main`
-     (consume rate limit; solo es contingencia).
-3. Si el SHA cambió: descarga `archive/refs/heads/main.tar.gz`, extrae en
-   `.deploy/` con `--strip-components=1`.
-4. Compara byte a byte `index.html`, `server.py`, `wol.py` contra los locales.
-   - `index.html`/`wol.py`: `os.replace` directo (se sirven/recargan sin reinicio).
-   - `server.py`: se guarda como `.new`, se vuelca el estado (`_flush_state()`) y
-     `os.execv` reinicia el proceso.
-5. `version.json` guarda `{sha, ts, etag}` (gitignored).
+1. `deploy_loop()` calls `check_and_deploy()` at startup and every `DEPLOY_POLL`.
+2. `remote_sha()` requests `commits/main.atom` with `If-None-Match: <saved etag>`.
+   - On changes: parses `<id>tag:github.com,2008:Grit::Commit/<sha></id>`.
+   - On `304`: returns the local SHA and keeps the ETag ⇒ zero bytes, zero API units.
+   - If the feed fails: falls back to REST `/repos/.../commits?per_page=1&sha=main`
+     (consumes rate limit; contingency only).
+3. If the SHA changed: downloads `archive/refs/heads/main.tar.gz`, extracts into
+   `.deploy/` with `--strip-components=1`.
+4. Compares bytes of the three deployable files against the local ones.
+   - `index.html`/`wol.py`: `os.replace` directly (hot reload, no restart).
+   - `server.py`: saved as `.new`, state dumped (`_flush_state()`), then
+     `os.execv` restarts the process.
+5. `version.json` stores `{sha, ts, etag}` (gitignored).
 
-**Implicación para agentes:** un push a `main` despliega en ~10 s en el celular.
-Por eso cualquier cambio en `server.py` debe ser retrocompatible: el reinicio es
-automático y no hay rollback manual a menos que se revierta el commit.
+**Implication for agents:** a push to `main` deploys to the phone in ~10 s. Any
+change to `server.py` must therefore be backwards compatible: the restart is
+automatic and there is no manual rollback unless the commit is reverted.
 
-## 6. Optimizaciones ya conseguidas (no regressione)
+## 6. Optimizations already achieved (do not regress)
 
-Del commit `e5606b7` y posteriores (reporte original `REPORT.html`, eliminado después):
+From commit `e5606b7` and later (original report `REPORT.html`, later removed):
 
-- Recolección de estado: **1750 ms → 3 ms**.
-- Latencia de comando: **6.4 s → 0.002 s** (long-poll + TCP_NODELAY).
-- CPU del agente: **13.9% → 1.2%**.
-- 0% de pérdida de lecturas (escrituras atómicas tmp+rename).
-- HTTP/1.1 keep-alive; `TCP_NODELAY` evita el retardo de ACK de Nagle (~40 ms).
-- Batería del celular: `termux-battery-status` en hilo aparte cada 30 s, no en el
-  handler HTTP; `termux-wake-lock` mantiene el proceso vivo con la pantalla apagada.
-- Sin forks en el hot path: CPU desde `/proc/stat`, temps desde sysfs, IP por ioctl,
-  T3 Code por scan de `/proc/*/comm`, GPUs con procesos largos.
+- State collection: **1750 ms → 3 ms**.
+- Command latency: **6.4 s → 0.002 s** (long-poll + TCP_NODELAY).
+- Agent CPU: **13.9% → 1.2%**.
+- 0% read loss (atomic tmp+rename writes).
+- HTTP/1.1 keep-alive; `TCP_NODELAY` avoids Nagle's ~40 ms delayed ACK.
+- Phone battery: `termux-battery-status` in a separate thread every 30 s, not in
+  the HTTP handler; `termux-wake-lock` keeps the process alive with the screen off.
+- No forks in the hot path: CPU from `/proc/stat`, temps from sysfs, IP via ioctl,
+  T3 Code via `/proc/*/comm` scan, GPUs via long-lived processes.
 
-## 7. Gotchas operativos (errores ya encontrados en git history)
+## 7. Operational gotchas (errors already found in git history)
 
-- **Batería en el handler**: leer `termux-battery-status` dentro del request crashing
-  la conexión ⇒ cache en background (commits `833757e`→`2dc3cd5`).
-- **Flag de autologin**: el listener NO debe escribirlo; la señal llega cuando la PC
-  ya arrancó y el flag ya se consumió ⇒ reescribirlo ensucia el próximo arranque
-  manual (`45503da`).
-- **Flag sin sudo**: el agente no puede `sudo mkdir /var/lib/...` (contexto de
-  servicio) ⇒ escribe directo; el directorio ajustado ya existe (`b59313b`).
-- **Sleep toggle**: no cambiar `aria-pressed` localmente; sincronizar con el brillo
-  real, y nunca guardar 0 como valor de restauración (`594634c`).
-- **RGB sin sudo**: regla udev + chmod, no `sudo` desde el agente (`e24ac32`).
-- **Scope transitorio**: `systemd-run --user --scope`, no un service oneshot —
-  systemd mata el cgroup cuando `gtk-launch` termina (`fe119fb`).
-- **Entorno de sesión**: clonar `DISPLAY/WAYLAND_DISPLAY/DBUS_SESSION_BUS_ADDRESS/...`
-  de un proceso gráfico (`0a148f4`); si no, falla el plugin Qt.
-- **Dos `wol.py`**: el deploy solo actualiza `panel_celular/wol.py`; la copia de la
-  raíz quedó para uso standalone. Sincronizar si se cambia el protocolo.
-- **`REPORT.html`**: referenciado en README pero borrado en `7903025`. No recrear.
+- **Battery in the handler**: calling `termux-battery-status` (or `dumpsys`)
+  inside the request crashed the connection ⇒ background-thread cache
+  (commits `833757e`→`2dc3cd5`).
+- **Autologin flag**: the listener must NOT write it; by the time the signal
+  arrives the PC has already booted and the flag was consumed ⇒ writing it there
+  dirties the next manual boot (`45503da`).
+- **Flag without sudo**: the agent cannot `sudo mkdir /var/lib/...` (service
+  context) ⇒ writes directly; the directory is already user-owned (`b59313b`).
+- **Sleep toggle**: do not change `aria-pressed` locally; sync with real
+  brightness, and never save 0 as the restore value (`594634c`).
+- **RGB without sudo**: udev rule + chmod, no `sudo` from the agent (`e24ac32`).
+- **Transient scope**: `systemd-run --user --scope`, not a oneshot service —
+  systemd kills the cgroup when `gtk-launch` ends (`fe119fb`).
+- **Session environment**: clone `DISPLAY/WAYLAND_DISPLAY/DBUS_SESSION_BUS_ADDRESS/...`
+  from a graphical process (`0a148f4`); otherwise the Qt plugin fails.
+- **Two `wol.py` files**: deploy only updates `panel_celular/wol.py`; the root
+  copy remains for standalone use. Sync them if the protocol changes.
+- **`REPORT.html`**: referenced in the old README but deleted in `7903025`.
+  Do not recreate it.
 
-## 8. Checklist antes de dar por terminado un cambio
+## 8. Checklist before calling a change done
 
-1. `python3 -m py_compile` en todos los `.py` tocados; `bash -n` en los `.sh`.
-2. `git diff --check` limpio.
-3. Contrato HTTP intacto (tabla §2) y JSON de estado intacto (§2).
-4. Si tocaste archivos del celular: servir en local (`PORT=8080 python3 server.py`) y
-   probar `/version`, `/status`, `/battery`, `/cmd?wait=1` + `POST /cmd`/`ack`.
-5. Si tocaste el agente: verificar que no se añadió ningún `subprocess` síncrono
-   en `status()` ni en `publish_loop()`.
-6. Si la change afecta al deploy, recordar que `index.html`/`wol.py` se actualizan
-   sin reinicio pero `server.py` reinicia el proceso y vuelca el estado.
-7. Documentar en `DECISIONS.md` cualquier decision arquitectónica nueva.
+1. `python3 -m py_compile` on every `.py` touched; `bash -n` on the `.sh` files.
+2. `git diff --check` clean.
+3. HTTP contract intact (section 2 table) and state JSON intact (section 2).
+4. If you touched phone files: serve locally (`PORT=8080 python3 server.py`) and
+   test `/version`, `/status`, `/battery`, `/cmd?wait=1` plus `POST /cmd`/`ack`.
+5. If you touched the agent: verify no synchronous `subprocess` was added to
+   `status()` or `publish_loop()`.
+6. If the change affects deploy, remember `index.html`/`wol.py` hot-reload but
+   `server.py` restarts the process and dumps state.
+7. Record any new architectural decision in `DECISIONS.md`.

@@ -1,56 +1,56 @@
 ---
-name: Bug / fallo observado
-about: Reportar un comportamiento incorrecto del panel, el agente o el deploy
+name: Bug report
+about: Report incorrect behavior of the panel, the agent or the deploy
 title: "[Bug]: "
 labels: bug, triage
 ---
 
-## Contexto
+## Context
 
-<!-- ¿Dónde ocurre? Celular (Termux), PC (agente), listener WoL, deploy, UI... -->
+<!-- Where does it happen? Phone (Termux), PC (agent), WoL listener, deploy, UI... -->
 
-- Componente afectado:
-- Commit desplegado (`curl -s http://100.113.245.28:8080/version`):
-- ¿Empezó tras un cambio/deploy? ¿Cuándo?
+- Affected component:
+- Deployed commit (`curl -s http://100.113.245.28:8080/version`):
+- Did it start after a change/deploy? When?
 
-## Pasos para reproducir
+## Steps to reproduce
 
 1.
 2.
 3.
 
-## Comportamiento esperado
+## Expected behavior
 
-## Comportamiento observado (evidencia)
+## Observed behavior (evidence)
 
-<!-- Pegar logs, salida de journalctl, capturas o respuestas curl. -->
+<!-- Paste logs, journalctl output, screenshots or curl responses. -->
 
 ```text
 
 ```
 
-## Entorno
+## Environment
 
-- Lado: [ ] celular Termux  [ ] PC  [ ] ambos
-- Versión de Python / Fedora / Android:
-- Tailscale activo: [ ] sí [ ] no
-- Estado de servicios (si aplica):
+- Side: [ ] phone Termux  [ ] PC  [ ] both
+- Python / Fedora / Android version:
+- Tailscale active: [ ] yes [ ] no
+- Service status (if applicable):
   - `systemctl --user status panel-agent.service`
   - `systemctl status wol-listener.service`
 
-## Impacto
+## Impact
 
-- ¿Afecta al estado, a los comandos, al apagado/WoL o solo a la UI?
-- ¿Con qué frecuencia?
-- ¿Hay riesgo de perder el control remoto del PC?
+- Does it affect status, commands, shutdown/WoL or only the UI?
+- How often does it happen?
+- Is there a risk of losing remote control of the PC?
 
-## Criterios de aceptación
+## Acceptance criteria
 
-- [ ] El fallo se reproduce de forma determinista (o se documenta su intermitencia).
-- [ ] La causa raíz está identificada en un archivo/línea concretos.
-- [ ] Existe una verificación que pasa con el fix y falla sin él.
-- [ ] El contrato HTTP (`docs/AGENT_CONTEXT.md` §2) sigue intacto.
+- [ ] The issue reproduces deterministically (or its intermittency is documented).
+- [ ] The root cause is identified in a specific file/line.
+- [ ] A verification exists that passes with the fix and fails without it.
+- [ ] The HTTP contract (`docs/AGENT_CONTEXT.md` §2) is still intact.
 
-## Propuesta (opcional)
+## Proposal (optional)
 
-<!-- Si ya tienes una idea del fix, descríbela y señala el riesgo/rollback. -->
+<!-- If you already have an idea for the fix, describe it and note the risk/rollback. -->
