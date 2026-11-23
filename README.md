@@ -7,6 +7,22 @@ It shows the PC status and can wake it (Wake-on-LAN), shut it down, and open/clo
 - `panel_celular/` — Python server + HTML + wol.py + auto-deploy + boot script
 - `panel_pc/` — PC agent (RAM, CPU, GPU usage/temps, T3 Code, commands)
 
+## Documentation / para agentes
+
+Si eres un agente (o vas a pedirle trabajo a uno), empieza por **[AGENTS.md](AGENTS.md)**:
+memoria corta con las reglas no negociables, comandos y cómo verificar cambios.
+Después consulta:
+
+- [docs/AGENT_CONTEXT.md](docs/AGENT_CONTEXT.md) — arquitectura detallada, contrato
+  HTTP, variables de entorno, servicios systemd, flujo de auto-deploy y gotchas.
+- [docs/DECISIONS.md](docs/DECISIONS.md) — decisiones ya tomadas (ADR simple):
+  servicio de usuario vs. sistema, AppImage extract-and-run, caché de batería,
+  Atom feed sin rate limit, flag de WoL, etc. **No las revertiles sin nueva decisión.**
+- [.github/ISSUE_TEMPLATE/](.github/ISSUE_TEMPLATE/) — plantillas de bug, feature
+  e investigación/optimización (contexto, evidencia, criterios de aceptación).
+- [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) — resumen,
+  pruebas, impacto, riesgo/rollback y checklist.
+
 ## Auto-deploy
 The phone polls GitHub every 10s (`DEPLOY_POLL`, via a cached Atom feed that costs
 zero API rate-limit units). On a new commit on `main`, it downloads, copies the
@@ -34,8 +50,8 @@ in a transient **`systemd-run --user --scope`**, so it survives agent restarts a
 the session context.
 
 ## Performance / stability / security improvements
-See [REPORT.html](REPORT.html) for the before/after report with real measurements.
-Summary: state collection 1750 ms → 3 ms, command latency 6.4 s → 0.002 s,
+Summary (mediciones del reporte original, disponible en el historial de git):
+state collection 1750 ms → 3 ms, command latency 6.4 s → 0.002 s,
 agent CPU 13.9% → 1.2%, 0% read loss, CORS/Host restrictions and auto-deploy
 without consuming GitHub API rate limit. The interface keeps all endpoints,
 JSON fields and commands; only the styling changed (black/white with cyan accents).
