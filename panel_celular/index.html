@@ -207,9 +207,44 @@ function refreshBattery(){
   }).catch(()=>{});
 }
 
-setInterval(()=>{ document.getElementById('clock').textContent = new Date().toLocaleString(); refresh(); refreshBattery(); }, 1000);
+// Battery data changes only every 30 s on the server, so polling it every
+// second was pure wakeups. Status stays at 1 s while the tab is visible so
+// the panel remains real time; a hidden tab generates no HTTP traffic at all.
+const BATTERY_INTERVAL = 30000;
+let clockTimer = null;
+let batteryTimer = null;
+
+function tickClock(){
+  document.getElementById('clock').textContent = new Date().toLocaleString();
+}
+
+function startPolling(){
+  if (clockTimer == null) clockTimer = setInterval(()=>{ tickClock(); refresh(); }, 1000);
+  if (batteryTimer == null) batteryTimer = setInterval(refreshBattery, BATTERY_INTERVAL);
+}
+
+function stopPolling(){
+  clearInterval(clockTimer); clockTimer = null;
+  clearInterval(batteryTimer); batteryTimer = null;
+}
+
+function onVisibilityChange(){
+  if (document.visibilityState === 'hidden') {
+    stopPolling();
+  } else {
+    // Fresh data immediately after refocusing, then resume normal intervals.
+    tickClock();
+    refresh();
+    refreshBattery();
+    startPolling();
+  }
+}
+
+document.addEventListener('visibilitychange', onVisibilityChange);
+tickClock();
 refreshBattery();
 refresh();
+onVisibilityChange();
 </script>
 </body>
 </html>

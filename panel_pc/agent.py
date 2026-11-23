@@ -43,6 +43,14 @@ PANEL_TOKEN = os.environ.get("PANEL_TOKEN", "")
 GPU_PERIOD = float(os.environ.get("GPU_SAMPLE_PERIOD", "2"))
 DEBUG = os.environ.get("PANEL_DEBUG", "") not in ("", "0")
 
+# When the phone is unreachable, retrying as fast as the socket timeout allows
+# keeps waking the radio and the CPU for nothing. Back off exponentially while
+# failing (capped well below the UI's 15 s "pc is off" timeout) and resume the
+# normal cadence and long-poll as soon as the panel answers again.
+PUBLISH_BACKOFF_MAX = 3.0
+CMD_BACKOFF_MAX = 5.0
+CMD_RECOVER_AFTER = 3  # successful short polls before restoring the long-poll
+
 _shutdown_timer = None
 _stop = threading.Event()
 
@@ -598,6 +606,9 @@ class Agent:
         self.net = NetSampler()
         self.long_poll = True
         self.last_key = None
+        self._publish_failures = 0
+        self._cmd_failures = 0
+        self._cmd_successes = 0
 
     def status(self):
         return {
@@ -617,8 +628,14 @@ class Agent:
             t0 = time.monotonic()
             try:
                 self.client.request("POST", "/status", self.status(), timeout=3)
+                self._publish_failures = 0
             except Exception as e:
                 log(f"status: {e}")
+                self._publish_failures += 1
+                backoff = min(PUBLISH_BACKOFF_MAX,
+                              0.5 * 2 ** min(self._publish_failures - 1, 3))
+                _stop.wait(backoff)
+                continue
             _stop.wait(max(0.0, INTERVAL - (time.monotonic() - t0)))
 
     def command_loop(self):
@@ -631,8 +648,18 @@ class Agent:
             except Exception as e:
                 log(f"cmd: {e}")
                 self.long_poll = False
-                _stop.wait(0.2)
+                self._cmd_successes = 0
+                self._cmd_failures += 1
+                _stop.wait(min(CMD_BACKOFF_MAX,
+                               0.2 * 2 ** min(self._cmd_failures - 1, 5)))
                 continue
+            self._cmd_failures = 0
+            if not self.long_poll:
+                # Transient outage over: restore millisecond command latency.
+                self._cmd_successes += 1
+                if self._cmd_successes >= CMD_RECOVER_AFTER:
+                    self.long_poll = True
+                    self._cmd_successes = 0
             name = (cmd or {}).get("comando")
             if not name:
                 if not self.long_poll:
