@@ -64,7 +64,9 @@ single real device (fixed IPs and MAC, absolute paths under `/home/diegral`).
    Respect `ALLOWED_HOSTS` and the tailnet range `100.64.0.0/10`.
 8. **Command idempotency**: the agent stores `(comando, ts)` in `last_key` and
    skips duplicates if an ack was lost. Do not remove this mechanism.
-9. Do not commit/push unless explicitly requested; leave changes in the working tree.
+9. Commit changes on a feature branch and open a PR; never commit or push
+   directly to `main`. Leave `main` untouched — all changes reach it through
+   reviewed PRs.
 10. **Write all documentation, issues, comments and responses in English.** Existing
     code mixes English and Spanish; match the file you are editing, but all new
     prose must be in English.

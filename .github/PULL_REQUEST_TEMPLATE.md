@@ -55,4 +55,4 @@ Manual verification (curl / journalctl / screenshot / before-after):
 - [ ] `git diff --check` clean.
 - [ ] No credentials, test IPs or new personal paths without justification.
 - [ ] Documentation updated if operational behavior changed.
-- [ ] No commits/pushes made unless explicitly requested by the user.
+- [ ] Changes are committed on a feature branch, not directly on `main`; the PR is the only path to `main`.
