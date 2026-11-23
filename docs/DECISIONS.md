@@ -128,3 +128,31 @@ tested and rejected. Commit numbers refer to the real history of `main`.
   and internal organization.
 - **Consequences:** panel and agent can evolve independently as long as the
   contract is respected. Tests/verification focus on that contract.
+
+---
+
+## ADR-012 — Spaced deploy checks and visibility-aware UI polling
+(`panel_celular/boot_panel`, `panel_celular/server.py`, `panel_celular/index.html`,
+`panel_pc/agent.py`)
+
+- **Context:** the phone is a dedicated always-on server. The deploy loop woke
+  the radio and ran a DNS + TLS request every 10 s (~8640/day), the UI polled
+  `/battery` every second even though the server cache only changes every
+  30 s, and a hidden tab kept issuing both requests. The agent retried a
+  long-poll every 0.2 s while the phone was unreachable. No in-repo
+  measurement of `%/h` exists yet (issue #2, proposal P1); the wake lock (P2)
+  is deliberately untouched because removing it needs on-device validation.
+- **Decision:** `boot_panel` exports `DEPLOY_POLL=300` (the server default of
+  10 s is kept for local use); `POST /version?check=1` schedules an immediate
+  check in a daemon thread, with `GET /version` unchanged and a non-blocking
+  lock preventing overlapping checks. The UI stops all polling when the tab is
+  hidden, refreshes immediately on refocus, and polls `/battery` every 30 s
+  while visible (`/status` stays at 1 s). The agent backs off failed publish
+  and command requests (capped at 3 s / 5 s) and restores the long-poll after
+  three successful short polls.
+- **Consequences:** ~96% fewer feed connections/day, no HTTP from hidden tabs,
+  no redundant battery reads, and no reconnect storm during outages. Deploys
+  arrive within 5 minutes automatically, or on demand via the POST trigger.
+  Command latency (~2 ms) and the 15 s freshness timeout are unchanged.
+  Rollback: remove the `DEPLOY_POLL` export in `boot_panel` and revert the
+  polling/backoff changes; no service or OS change is involved.

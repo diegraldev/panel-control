@@ -4,6 +4,13 @@ export PATH=/data/data/com.termux/files/usr/bin:$PATH
 H=/data/data/com.termux/files/home
 cd $H/panel
 termux-wake-lock
+# The phone is a dedicated always-on server. Checking the Atom feed every
+# 10 s means ~8640 TLS/DNS connections per day, each waking the radio.
+# 300 s keeps automatic deploys within 5 minutes while cutting that to ~288.
+# After a push, force an immediate check (no restart, no wait for the timer):
+#   curl -s -X POST 'http://100.113.245.28:8080/version?check=1'
+# (add -H 'X-Panel-Token: ...' if PANEL_TOKEN is configured).
+export DEPLOY_POLL=300
 if ! pgrep -f "python3 server.py" >/dev/null; then
   env REPO_URL=diegraldev/remotecontrol nohup python3 server.py > $H/panel/server.log 2>&1 &
 fi

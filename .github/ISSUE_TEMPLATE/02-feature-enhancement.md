@@ -40,7 +40,7 @@ labels: enhancement, triage
 
 ## Acceptance criteria
 
-- [ ] Implementation left in the working tree (no commit unless requested).
+- [ ] Implemented on a feature branch and delivered through a PR (never a direct commit to `main`).
 - [ ] `python3 -m py_compile` / `bash -n` pass.
 - [ ] Manual verification documented (curl / journalctl / screenshot).
 - [ ] `docs/DECISIONS.md` updated if applicable.

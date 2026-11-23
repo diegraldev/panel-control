@@ -12,6 +12,8 @@ Endpoints (unchanged contract):
     GET  /estado        -> free-form state blob
     POST /estado_cmd    -> store free-form state blob
     GET  /version       -> deployed commit
+    POST /version?check=1 -> optional on-demand auto-deploy check (additive;
+                             GET /version is unchanged)
 
 Design notes (all behaviour-compatible with the previous version):
   * HTTP/1.1 with keep-alive: one TCP connection is reused by the agent and
@@ -52,6 +54,9 @@ PC_MAC = os.environ.get("PC_MAC", "d8:bb:c1:22:1a:d1")
 REPO = os.environ.get("REPO_URL", "")
 TOKEN = os.environ.get("REPO_TOKEN", "")
 VERSION_FILE = os.path.join(BASE, "version.json")
+# The server default stays at 10 s for local development. On the phone,
+# boot_panel exports DEPLOY_POLL=300 to avoid waking the radio all day; an
+# immediate check is available via POST /version?check=1.
 POLL_INTERVAL = int(os.environ.get("DEPLOY_POLL", "10"))
 DEPLOY_DIR = os.path.join(BASE, ".deploy")
 
@@ -260,9 +265,22 @@ def _persist_etag(etag):
         write_json(VERSION_FILE, meta)
 
 
+_deploy_lock = threading.Lock()
+
+
 def check_and_deploy():
+    """Run a deploy check; never let two checks race (loop + manual trigger)."""
     if not REPO:
         return
+    if not _deploy_lock.acquire(blocking=False):
+        return
+    try:
+        _check_and_deploy_now()
+    finally:
+        _deploy_lock.release()
+
+
+def _check_and_deploy_now():
     try:
         sha, etag = remote_sha()
         if sha == get_version():
@@ -561,6 +579,12 @@ class Handler(BaseHTTPRequestHandler):
                 write_json(CMD_FILE, {})
                 _cmd_cond.notify_all()
             self._send(200, {"ok": True})
+        elif path == "/version" and "check=1" in self.path.partition("?")[2].split("&"):
+            # On-demand deploy check for the spaced-out phone poll. It runs in
+            # a daemon thread so this response is immediate and an os.execv
+            # restart (if server.py changed) never happens in a handler thread.
+            threading.Thread(target=check_and_deploy, daemon=True).start()
+            self._send(200, {"ok": True, "check": "queued"})
         else:
             self._send(404, {"error": "no encontrado"})
 
