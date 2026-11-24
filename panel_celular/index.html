@@ -5,9 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#050505">
 <meta name="color-scheme" content="dark">
-<meta name="apple-mobile-web-app-capable" content="yes">
 <title>Remote Control</title>
-<link rel="manifest" href="/manifest.webmanifest">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%23050505'/%3E%3Crect x='18' y='20' width='64' height='44' rx='5' fill='none' stroke='%2322d3ee' stroke-width='6'/%3E%3Cpath d='M10 74h80l-6-10H16z' fill='%2322d3ee'/%3E%3C/svg%3E">
 <style>
@@ -118,15 +116,6 @@ button:focus-visible{outline:1px solid var(--accent);outline-offset:3px}
 
   <div class="msg" id="msg"></div>
 
-  <!-- Push controls live outside #content: alerts can be configured even
-       while the PC is off. The button stays hidden unless HTTPS + server
-       config make Web Push available. -->
-  <div class="buttons" id="pushRow" style="margin-top:.75rem">
-    <button id="pushBtn" class="hidden" onclick="togglePush()">enable alerts</button>
-  </div>
-  <input id="pushToken" class="hidden" type="password" placeholder="panel token"
-         aria-label="Panel token" autocomplete="off"
-         style="width:100%;margin-top:.5rem;padding:.6rem .75rem;font-size:.8125rem;font-family:inherit;color:var(--text);background:var(--surface);border:1px solid var(--line-strong);border-radius:.5rem">
 </div>
 
 <div class="modal hidden" id="modal">
@@ -210,78 +199,6 @@ function toggleSleep() {
   // estado real (brillo en 0). Así el toggle nunca miente.
   cmd(turningOn ? 'sleep-on' : 'sleep-off', turningOn ? 'sleep mode on…' : 'sleep mode off…');
 }
-
-// ---------------------------------------------------------------- Web Push
-// fetch('/push/config') is prefetched on load: on iOS the permission request
-// must be the first thing in the click handler, with no await before it.
-let pushConfig = null;
-let pushSub = null;
-
-function urlBase64ToUint8Array(value) {
-  const padding = '='.repeat((4 - value.length % 4) % 4);
-  const base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const raw = atob(base64);
-  const bytes = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-  return bytes;
-}
-
-function pushHeaders(includeToken) {
-  const headers = {'Content-Type':'application/json'};
-  const field = document.getElementById('pushToken');
-  const token = field.value || localStorage.getItem('panelPushToken') || '';
-  if (includeToken && token) {
-    headers['X-Panel-Token'] = token;
-    localStorage.setItem('panelPushToken', token);
-  }
-  return headers;
-}
-
-async function togglePush() {
-  const msg = document.getElementById('msg');
-  const btn = document.getElementById('pushBtn');
-  try {
-    if (pushSub) {
-      await pushSub.unsubscribe();
-      await fetch('/push/unsubscribe', {
-        method:'POST', headers:pushHeaders(true),
-        body:JSON.stringify({endpoint:pushSub.endpoint})
-      });
-      pushSub = null;
-      btn.textContent = 'enable alerts';
-      msg.textContent = '✓ alerts disabled';
-      return;
-    }
-    // iOS 18.4+ has window.pushManager (declarative push, no service worker).
-    // Older iOS uses the registered SW's pushManager; the register() await is
-    // the only one before subscribe() and happens only on that older path.
-    const pm = window.pushManager ||
-      (await navigator.serviceWorker.register('/sw.js')).pushManager;
-    const sub = await pm.subscribe({
-      userVisibleOnly:true,
-      applicationServerKey:urlBase64ToUint8Array(pushConfig.public_key)
-    });
-    pushSub = sub;
-    const r = await fetch('/push/subscribe', {
-      method:'POST', headers:pushHeaders(!!pushConfig.token_required),
-      body:JSON.stringify({subscription:sub.toJSON()})
-    });
-    if (!r.ok) throw new Error('server rejected the subscription');
-    btn.textContent = 'disable alerts';
-    msg.textContent = '✓ alerts enabled';
-  } catch (e) {
-    msg.textContent = 'Error: ' + e;
-  }
-}
-
-fetch('/push/config', {cache:'no-store'}).then(r=>r.json()).then(c=>{
-  pushConfig = c;
-  if (!c.push_available || !window.isSecureContext) return;
-  if (c.token_required && !localStorage.getItem('panelPushToken')) {
-    document.getElementById('pushToken').classList.remove('hidden');
-  }
-  document.getElementById('pushBtn').classList.remove('hidden');
-}).catch(()=>{});
 
 function refreshBattery(){
   fetch('/battery',{cache:'no-store'}).then(r=>r.json()).then(b=>{

@@ -15,12 +15,9 @@ Endpoints (unchanged contract):
     POST /version?check=1 -> optional on-demand auto-deploy check (additive;
                              GET /version is unchanged)
 
-Additive iOS endpoints (new paths / one new query flag; no contract change):
+Additive Siri endpoint (new path / one new query flag; no contract change):
     GET  /siri               -> spoken plain-text status (Siri Shortcuts)
     POST /cmd?spoken=1       -> same command, plain-text spoken reply
-    GET  /manifest.webmanifest, /sw.js -> embedded PWA assets
-    GET  /push/config, /push/subscriptions -> push diagnostics
-    POST /push/subscribe, /push/unsubscribe, /push/test -> push management
 
 Design notes (all behaviour-compatible with the previous version):
   * HTTP/1.1 with keep-alive: one TCP connection is reused by the agent and
@@ -35,12 +32,10 @@ Design notes (all behaviour-compatible with the previous version):
     rate limit, zero bytes when nothing changed, and the service only restarts
     when server.py itself changed.
 """
-import base64
 import gzip
 import ipaddress
 import json
 import os
-import queue
 import re
 import socket
 import subprocess
@@ -51,21 +46,6 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
-# Web Push (RFC 8291) needs AES-GCM, ECDH and ECDSA, which the Termux Python
-# standard library does not provide. Import cryptography opportunistically: if
-# it is missing, the panel and every pre-existing endpoint keep working and only
-# the push feature degrades (503 on mutating routes, error in /push/config).
-try:
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import ec
-    from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-    _CRYPTO_OK, _CRYPTO_ERR = True, ""
-except Exception as e:  # pragma: no cover - depends on the device
-    hashes = serialization = ec = decode_dss_signature = AESGCM = HKDF = None
-    _CRYPTO_OK, _CRYPTO_ERR = False, str(e)
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 STATUS_FILE = os.path.join(BASE, "status.json")
@@ -93,16 +73,8 @@ ALLOWED_HOSTS = {h.strip().lower() for h in os.environ.get("ALLOWED_HOSTS", "").
 
 CMD_VALUES = ("shutdown", "wake", "cancelar", "t3-open", "t3-close", "sleep-on", "sleep-off")
 
-# Web Push configuration (all optional; absence disables push, never the panel)
-VAPID_SUBJECT = os.environ.get("VAPID_SUBJECT", "https://github.com/diegraldev/remotecontrol")
-PANEL_PUBLIC_URL = os.environ.get("PANEL_PUBLIC_URL", "").rstrip("/")
-PUSH_TTL = int(os.environ.get("PUSH_TTL", "60"))
-PUSH_CHECK_INTERVAL = float(os.environ.get("PUSH_CHECK_INTERVAL", "2"))
 OFFLINE_MS = 15000  # same 15 s rule already used by index.html
-DATA_DIR = os.environ.get("PANEL_DATA_DIR", BASE)  # tests point this at a temp dir
-VAPID_FILE = os.path.join(DATA_DIR, "vapid.json")
-SUBSCRIPTIONS_FILE = os.path.join(DATA_DIR, "subscriptions.json")
-TOPIC = "pc-state"  # <= 32 URL-safe chars, required by Apple
+
 
 # ---------------------------------------------------------------- state cache
 _state_lock = threading.Lock()
@@ -113,17 +85,6 @@ _ack_cache = {}
 _estado_cache = {}
 _last_status_write = 0.0
 
-# Web Push state. Every dict below is guarded by its own lock and snapshots are
-# taken before any network work, so a slow push never holds a request thread.
-_subscriptions = {}  # endpoint -> {"endpoint", "keys": {...}, "added_ts"}
-_subscriptions_lock = threading.Lock()
-_vapid = None  # lazily loaded {"public_key_b64u", "private_key_pem"}
-_vapid_lock = threading.Lock()
-_pc_online = None  # None = baseline not established yet
-_transition_lock = threading.Lock()
-_pending_event = None
-_pending_count = 0
-_push_queue = queue.Queue(maxsize=64)
 _last_ts_ms = 0
 _ts_lock = threading.Lock()
 
@@ -172,13 +133,11 @@ def get_version():
 
 
 def load_state():
-    global _status_cache, _cmd_cache, _ack_cache, _estado_cache, _subscriptions
+    global _status_cache, _cmd_cache, _ack_cache, _estado_cache
     _status_cache["data"] = read_json(STATUS_FILE, None)
     _cmd_cache = read_json(CMD_FILE, {})
     _ack_cache = read_json(ACK_FILE, {})
     _estado_cache = read_json(ESTADO_FILE, {})
-    loaded = read_json(SUBSCRIPTIONS_FILE, {})
-    _subscriptions = loaded if isinstance(loaded, dict) else {}
 
 
 def store_status(data):
@@ -257,22 +216,9 @@ def is_online(status, now=None):
         (now - float(status.get("recibido_ts") or 0)) * 1000 < OFFLINE_MS
 
 
-def transition_decision(status, previous, now=None):
-    """Return (event, new_state); event is None | 'offline' | 'online'.
+    """One-line, whitespace-collapsed text so Siri reads a single sentence."""
 
-    Pure function: no I/O, no locks, no side effects. The first observation
-    only establishes the baseline, so a restart while the PC is off sends no
-    spurious alert.
-    """
-
-    online = is_online(status, now)
-    if previous is None:
-        return None, online
-    if previous and not online:
-        return "offline", False
-    if not previous and online:
-        return "online", True
-    return None, online
+    return re.sub(r"\s+", " ", str(value)).strip()
 
 
 def _clean(value):
@@ -357,262 +303,6 @@ def wake_pc_async():
     threading.Thread(target=_run, daemon=True).start()
 
 
-# ---------------------------------------------------------------- Web Push
-def b64u(raw):
-    """base64url without padding, as required by VAPID and RFC 8291."""
-
-    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
-
-
-def unb64u(value):
-    """Inverse of b64u(); tolerate a missing or partial pad."""
-
-    return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
-
-
-def get_vapid():
-    """Load or generate the P-256 VAPID key pair once and persist it."""
-
-    global _vapid
-    if _vapid is not None:
-        return _vapid
-    if not _CRYPTO_OK:
-        raise RuntimeError(_CRYPTO_ERR or "Web Push crypto library unavailable")
-    with _vapid_lock:
-        if _vapid is not None:
-            return _vapid
-        try:
-            existing = read_json(VAPID_FILE, None)
-            if isinstance(existing, dict) and existing.get("private_key_pem"):
-                key = serialization.load_pem_private_key(
-                    existing["private_key_pem"].encode(), password=None)
-                pub = key.public_key().public_bytes(
-                    serialization.Encoding.X962,
-                    serialization.PublicFormat.UncompressedPoint)
-                _vapid = {"public_key_b64u": b64u(pub),
-                          "private_key_pem": existing["private_key_pem"]}
-                return _vapid
-
-            key = ec.generate_private_key(ec.SECP256R1())
-            pem = key.private_bytes(
-                serialization.Encoding.PEM,
-                serialization.PrivateFormat.PKCS8,
-                serialization.NoEncryption()).decode("ascii")
-            pub = key.public_key().public_bytes(
-                serialization.Encoding.X962,
-                serialization.PublicFormat.UncompressedPoint)
-            _vapid = {"public_key_b64u": b64u(pub), "private_key_pem": pem}
-            write_json(VAPID_FILE, _vapid)
-            try:
-                os.chmod(VAPID_FILE, 0o600)
-            except OSError:
-                pass
-            return _vapid
-        except Exception as e:
-            raise RuntimeError(f"VAPID setup failed: {e}")
-
-
-def make_vapid_auth(endpoint):
-    """Build the VAPID Authorization header (ES256 JWT, raw r||s signature)."""
-
-    vapid = get_vapid()
-    parts = urllib.parse.urlsplit(endpoint)
-    audience = f"{parts.scheme}://{parts.netloc}"
-    header = {"alg": "ES256", "typ": "JWT"}
-    claims = {"aud": audience, "exp": int(time.time()) + 12 * 3600,
-              "sub": VAPID_SUBJECT}
-    signing_input = (b64u(json.dumps(header, separators=(",", ":")).encode()) +
-                     "." + b64u(json.dumps(claims, separators=(",", ":")).encode()))
-    key = serialization.load_pem_private_key(
-        vapid["private_key_pem"].encode(), password=None)
-    der = key.sign(signing_input.encode("ascii"), ec.ECDSA(hashes.SHA256()))
-    # Web Push requires the raw r||s form; sending DER yields BadJwtToken.
-    r, s = decode_dss_signature(der)
-    raw = r.to_bytes(32, "big") + s.to_bytes(32, "big")
-    return f"vapid t={signing_input}.{b64u(raw)}, k={vapid['public_key_b64u']}"
-
-
-def encrypt_payload(plaintext, keys):
-    """RFC 8291 aes128gcm payload for one subscription."""
-
-    client_pub = unb64u(keys["p256dh"])
-    auth = unb64u(keys["auth"])
-    ephemeral = ec.generate_private_key(ec.SECP256R1())
-    as_pub = ephemeral.public_key().public_bytes(
-        serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
-    client_key = ec.EllipticCurvePublicKey.from_encoded_point(
-        ec.SECP256R1(), client_pub)
-    shared = ephemeral.exchange(ec.ECDH(), client_key)
-    info = b"WebPush: info\x00" + client_pub + as_pub
-    ikm = HKDF(hashes.SHA256(), length=32, salt=auth, info=info).derive(shared)
-    salt = os.urandom(16)
-    # Two HKDF calls with the same salt/IKM reuse the same PRK: equivalent to
-    # RFC 8291's extract-then-expand with info labels below.
-    cek = HKDF(hashes.SHA256(), 16, salt, b"Content-Encoding: aes128gcm\x00").derive(ikm)
-    nonce = HKDF(hashes.SHA256(), 12, salt, b"Content-Encoding: nonce\x00").derive(ikm)
-    record = plaintext + b"\x02"  # delimiter; payloads are far below 4 KB
-    ct = AESGCM(cek).encrypt(nonce, record, None)
-    return salt + (4096).to_bytes(4, "big") + bytes([65]) + as_pub + ct
-
-
-def send_web_push(endpoint, keys, payload):
-    """Return 'ok', 'prune' (410/404) or 'error'. Never raises or retries."""
-
-    try:
-        body = encrypt_payload(json.dumps(payload, separators=(",", ":")).encode(), keys)
-        request = urllib.request.Request(endpoint, data=body, method="POST", headers={
-            "Authorization": make_vapid_auth(endpoint),
-            "Content-Type": "application/octet-stream",
-            "Content-Encoding": "aes128gcm",
-            "TTL": str(PUSH_TTL), "Urgency": "high", "Topic": TOPIC})
-    except Exception as e:
-        print(f"[PUSH] prepare failed: {e}", flush=True)
-        return "error"
-    try:
-        with urllib.request.urlopen(request, timeout=10) as response:
-            code = response.getcode()
-            response.read()
-        if code in (200, 201):
-            return "ok"
-        print(f"[PUSH] unexpected status {code} from {endpoint}", flush=True)
-        return "error"
-    except urllib.error.HTTPError as e:
-        if e.code in (410, 404):
-            return "prune"
-        print(f"[PUSH] HTTP {e.code} from {endpoint}", flush=True)
-        return "error"
-    except Exception as e:
-        print(f"[PUSH] delivery failed: {e}", flush=True)
-        return "error"
-
-
-def _notification_payload(event):
-    """One declarative format for iOS 18.4+ and older service workers."""
-
-    if event == "test":
-        body, badge = "Test notification from remote_control", "1"
-    else:
-        offline = (event == "offline")
-        body = "PC went offline" if offline else "PC is back online"
-        badge = "1" if offline else "0"  # clear the badge when back online
-    return {
-        "web_push": 8030,
-        "notification": {
-            "title": "remote_control",
-            "lang": "en-US", "dir": "ltr",
-            "body": body,
-            "navigate": PANEL_PUBLIC_URL + "/",  # required by declarative format
-            "silent": False,
-            "app_badge": badge,
-        },
-    }
-
-
-def prune_subscription(endpoint):
-    """Remove a subscription that Apple answered with 410/404."""
-
-    global _subscriptions
-    with _subscriptions_lock:
-        if endpoint not in _subscriptions:
-            return False
-        del _subscriptions[endpoint]
-        write_json(SUBSCRIPTIONS_FILE, _subscriptions)
-        return True
-
-
-def enqueue_push(payload, endpoint=None, keys=None):
-    """Queue a notification for all subscribers, or for one explicit target."""
-
-    if endpoint is not None:
-        targets = [(endpoint, keys or {})]
-    else:
-        with _subscriptions_lock:
-            targets = [(s["endpoint"], s.get("keys", {}))
-                       for s in _subscriptions.values()]
-    sent = 0
-    for ep, ks in targets:
-        try:
-            _push_queue.put_nowait((ep, ks, payload))
-            sent += 1
-        except queue.Full:
-            # State alerts are ephemeral: never block a request or the detector.
-            print("[PUSH] queue full, dropping notification", flush=True)
-    return sent
-
-
-def _transition_loop():
-    """Detect online/offline transitions; confirm each change twice."""
-
-    global _pc_online, _pending_event, _pending_count
-    while True:
-        try:
-            status = current_status()
-            now = time.time()
-            emit = None
-            with _transition_lock:
-                event, new_state = transition_decision(status, _pc_online, now)
-                if event is None:
-                    _pending_event, _pending_count = None, 0
-                    _pc_online = new_state
-                else:
-                    if _pending_event == event:
-                        _pending_count += 1
-                    else:
-                        _pending_event, _pending_count = event, 1
-                    if _pending_count >= 2:
-                        emit, _pc_online = event, new_state
-                        _pending_event, _pending_count = None, 0
-            if emit:
-                enqueue_push(_notification_payload(emit))
-        except Exception as e:
-            print(f"[PUSH] transition check failed: {e}", flush=True)
-        time.sleep(PUSH_CHECK_INTERVAL)
-
-
-def _push_worker():
-    """Single consumer: one delivery at a time, no retry loop, no handler work."""
-
-    while True:
-        item = _push_queue.get()
-        try:
-            endpoint, keys, payload = item
-            if send_web_push(endpoint, keys, payload) == "prune":
-                prune_subscription(endpoint)
-        except Exception as e:
-            print(f"[PUSH] worker failed: {e}", flush=True)
-        finally:
-            _push_queue.task_done()
-
-
-def start_background_workers():
-    threading.Thread(target=_transition_loop, daemon=True, name="push-transition").start()
-    threading.Thread(target=_push_worker, daemon=True, name="push-worker").start()
-
-
-def _push_config():
-    """Always 200 with a descriptive error when push cannot be used."""
-
-    reason = None
-    if not _CRYPTO_OK:
-        reason = _CRYPTO_ERR or "Web Push crypto library unavailable"
-    elif not PANEL_PUBLIC_URL:
-        reason = "PANEL_PUBLIC_URL is not configured"
-    public_key = None
-    if reason is None:
-        try:
-            public_key = get_vapid()["public_key_b64u"]
-        except Exception as e:
-            reason = str(e)
-    return {
-        "push_available": reason is None,
-        "public_key": public_key,
-        "token_required": bool(PANEL_TOKEN),
-        "public_url": PANEL_PUBLIC_URL,
-        "error": reason,
-    }
-
-
-# ------------------------------------------------------------- auto deploy
 _ATOM_RE = re.compile(rb"<id>tag:github\.com,2008:Grit::Commit/([0-9a-f]{40})</id>")
 
 
@@ -786,46 +476,6 @@ class Assets:
 
 ASSETS = None
 
-# Embedded PWA assets: the auto-deploy copy list stays
-# ("index.html", "server.py", "wol.py"), so the manifest and the service worker
-# are generated here instead of adding two restart-sensitive files to deploy.
-# The SVG data URI is the same icon already used by index.html.
-MANIFEST_JS = """{"id":"/","name":"remote_control","short_name":"remote","start_url":"/","scope":"/","display":"standalone","background_color":"#050505","theme_color":"#050505","icons":[{"src":"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%23050505'/%3E%3Crect x='18' y='20' width='64' height='44' rx='5' fill='none' stroke='%2322d3ee' stroke-width='6'/%3E%3Cpath d='M10 74h80l-6-10H16z' fill='%2322d3ee'/%3E%3C/svg%3E","sizes":"any","type":"image/svg+xml","purpose":"any"}]}"""
-
-SW_JS = """self.addEventListener('push', event => {
-  let data = {};
-  try { data = event.data ? event.data.json() : {}; } catch (e) {}
-  const n = data.notification || {};
-  const title = n.title || 'remote_control';
-  const target = n.navigate || '/';
-  // Reuse the tag so a new state replaces the previous notification instead
-  // of stacking duplicates. iOS 18.4+ renders the JSON declaratively and may
-  // never run this handler; older versions need showNotification().
-  event.waitUntil(self.registration.showNotification(title, {
-    body: n.body || '',
-    lang: n.lang || 'en-US',
-    dir: n.dir || 'ltr',
-    tag: 'pc-state',
-    renotify: true,
-    data: { url: target }
-  }));
-});
-
-self.addEventListener('notificationclick', event => {
-  event.notification.close();
-  const data = event.notification.data || {};
-  const target = data.url || '/';
-  event.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
-    for (const client of list) {
-      if (client.url === target || client.url.indexOf(target) === 0) return client.focus();
-    }
-    return clients.openWindow(target);
-  }));
-});
-"""
-
-
-# -------------------------------------------------------------------- HTTP
 def _is_tailnet(ip):
     try:
         parts = ip.split(".")
@@ -965,17 +615,6 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/siri":
             self._send(200, spoken_status_text(current_status()),
                        "text/plain; charset=utf-8")
-        elif path == "/manifest.webmanifest":
-            self._send(200, MANIFEST_JS, "application/manifest+json")
-        elif path == "/sw.js":
-            self._send(200, SW_JS, "application/javascript; charset=utf-8",
-                       {"Service-Worker-Allowed": "/"})
-        elif path == "/push/config":
-            self._send(200, _push_config())
-        elif path == "/push/subscriptions":
-            with _subscriptions_lock:
-                endpoints = list(_subscriptions)
-            self._send(200, {"count": len(endpoints), "endpoints": endpoints})
         else:
             self._send(404, {"error": "no encontrado"})
 
@@ -1037,22 +676,6 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, SPOKEN_COMMANDS[cmd], "text/plain; charset=utf-8")
             else:
                 self._send(200, {"ok": True, "comando": cmd})
-        elif path == "/push/subscribe":
-            self._handle_subscribe(data)
-        elif path == "/push/unsubscribe":
-            endpoint = data.get("endpoint")
-            if isinstance(endpoint, str):
-                with _subscriptions_lock:
-                    _subscriptions.pop(endpoint, None)
-                    write_json(SUBSCRIPTIONS_FILE, _subscriptions)
-            self._send(200, {"ok": True})
-        elif path == "/push/test":
-            with _subscriptions_lock:
-                targets = list(_subscriptions.values())
-            payload = _notification_payload("test")
-            for target in targets:
-                enqueue_push(payload, target["endpoint"], target.get("keys", {}))
-            self._send(200, {"ok": True, "queued": len(targets)})
         elif path == "/estado_cmd":
             with _state_lock:
                 _estado_cache = data
@@ -1074,51 +697,6 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, {"ok": True, "check": "queued"})
         else:
             self._send(404, {"error": "no encontrado"})
-
-    def _handle_subscribe(self, data):
-        """Validate and persist one Web Push subscription (inherits _guard)."""
-
-        reason = None
-        if not _CRYPTO_OK:
-            reason = _CRYPTO_ERR or "Web Push crypto library unavailable"
-        elif not PANEL_PUBLIC_URL:
-            reason = "PANEL_PUBLIC_URL is not configured"
-        if reason:
-            self._send(503, {"error": "Web Push unavailable: " + reason})
-            return
-
-        sub = data.get("subscription")
-        if not isinstance(sub, dict):
-            self._send(400, {"error": "missing subscription"})
-            return
-        endpoint = sub.get("endpoint")
-        keys = sub.get("keys")
-        if not isinstance(endpoint, str) or not endpoint.startswith("https://"):
-            self._send(400, {"error": "invalid endpoint"})
-            return
-        if not isinstance(keys, dict) or \
-                not isinstance(keys.get("p256dh"), str) or \
-                not isinstance(keys.get("auth"), str):
-            self._send(400, {"error": "invalid keys"})
-            return
-        if _CRYPTO_OK:
-            try:
-                if len(unb64u(keys["p256dh"])) != 65 or len(unb64u(keys["auth"])) != 16:
-                    self._send(400, {"error": "invalid key length"})
-                    return
-            except Exception:
-                self._send(400, {"error": "invalid key encoding"})
-                return
-
-        with _subscriptions_lock:
-            _subscriptions[endpoint] = {
-                "endpoint": endpoint,
-                "keys": {"p256dh": keys["p256dh"], "auth": keys["auth"]},
-                "added_ts": time.time(),
-            }
-            write_json(SUBSCRIPTIONS_FILE, _subscriptions)
-            count = len(_subscriptions)
-        self._send(200, {"ok": True, "subscriptions": count})
 
     def log_message(self, fmt, *args):
         pass
@@ -1152,16 +730,6 @@ def main():
     threading.Thread(target=_battery_loop, daemon=True).start()
     if REPO:
         threading.Thread(target=deploy_loop, daemon=True).start()
-    # One-time key generation before serving; push may be disabled without
-    # affecting the panel, Siri or any pre-existing endpoint.
-    if _CRYPTO_OK:
-        try:
-            get_vapid()
-        except Exception as e:
-            print(f"[PUSH] disabled: {e}", flush=True)
-    else:
-        print(f"[PUSH] disabled: {_CRYPTO_ERR or 'cryptography unavailable'}", flush=True)
-    start_background_workers()
     port = int(os.environ.get("PORT", "8080"))
     print(f"[PANEL] escuchando en 0.0.0.0:{port} (repo={REPO or 'local'})", flush=True)
     Server(("0.0.0.0", port), Handler).serve_forever()

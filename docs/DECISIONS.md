@@ -159,35 +159,19 @@ tested and rejected. Commit numbers refer to the real history of `main`.
 
 ---
 
-## ADR-013 — Additive iOS Siri + Web Push, with embedded PWA assets
-(`panel_celular/server.py`, `panel_celular/index.html`, `docs/IOS-SIRI-AND-PUSH-SETUP.md`)
+## ADR-013 — Additive Siri shortcuts, no HTTP contract change
 
-- **Context:** iOS cannot render Live Activities / Dynamic Island from a web app
-  (that needs ActivityKit + APNs and a native app). Web Push needs an HTTPS origin,
-  VAPID keys and RFC 8291 payload encryption, which Termux Python cannot do with the
-  standard library alone. The phone auto-deploys only three files, so a new `sw.js` or
-  `manifest.webmanifest` file would never reach the device.
-- **Decision:** ship Siri (`GET /siri`, `POST /cmd?spoken=1`) and Web Push as *additive*
-  routes in `server.py`. Embed the manifest and service worker as string constants
-  (`MANIFEST_JS`, `SW_JS`) so the deploy copy list stays unchanged. Require
-  `cryptography` only for push, with a graceful runtime fallback: if the import fails,
-  every pre-existing endpoint still works and push routes return a clear 503/error.
-  Keep transition detection in a daemon thread with a pure, unit-testable decision
-  function (`is_online`, `transition_decision`), a two-poll debounce and a single
-  queue consumer. Declarative payloads (`web_push: 8030`) render on iOS 18.4+ even if
-  the service worker was evicted; `sw.js` covers older versions. `PANEL_PUBLIC_URL`
-  unset disables push rather than sending a payload Apple may reject.
-- **Consequences:** no HTTP contract change (same endpoints, fields and seven
-  commands; `POST /cmd` keeps its JSON reply unless `spoken=1`), no deploy-logic change,
-  no forks or blocking in the request path. Push is best-effort and can be disabled
-  without affecting the panel. A true Dynamic Island remains out of scope and is
-  tracked separately. One-time phone setup (`boot_panel` exports, `cryptography`) is
-  manual because `boot_panel` is not auto-deployed.
+(`panel_celular/server.py`, `tests/test_server.py`, `docs/SIRI-SHORTCUTS.md`)
 
-### Implementation note: DER → raw VAPID signature
-
-The ES256 JWT signature must be the raw `r || s` (64 bytes), not DER. `make_vapid_auth()`
-calls `decode_dss_signature()` and pads each component to 32 bytes; sending DER
-directly produces `BadJwtToken` from Apple. The same helper derives the JWT `aud` from
-the subscription endpoint's scheme + netloc. Keep both details if the crypto code is
-ever refactored.
+- **Context:** the user wants to control the panel from the iPhone by voice with
+  Siri. The existing HTTP contract is already used by the panel UI and the PC
+  agent, so it must stay byte-for-byte compatible.
+- **Decision:** add `GET /siri` (plain-text status sentence) and `POST
+  /cmd?spoken=1` (same seven commands, plain-text reply). Both reuse the existing
+  `_guard()` and the live status cache. A missing/invalid `ts` is auto-filled with
+  a strictly increasing millisecond value to protect the agent's dedupe key.
+- **Consequences:** no new background threads, files or deploy targets, no changes
+  to existing endpoints or JSON fields, and Siri works over the plain tailnet
+  HTTP address. Web Push / Dynamic Island were evaluated and deliberately
+  excluded: they need a secure origin, extra crypto and a proxy that would fail
+  exactly when the PC is off, so they are not worth the complexity here.

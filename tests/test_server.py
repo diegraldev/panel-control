@@ -11,21 +11,13 @@ import http.client
 import importlib.util
 import json
 import os
-import queue
 import shutil
 import sys
 import tempfile
 import threading
 import time
 import unittest
-import urllib.error
 from unittest import mock
-
-try:
-    import cryptography  # noqa: F401
-    _CRYPTO_AVAILABLE = True
-except ImportError:  # pragma: no cover - depends on the device
-    _CRYPTO_AVAILABLE = False
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SERVER_PATH = os.path.join(REPO_ROOT, "panel_celular", "server.py")
@@ -35,9 +27,7 @@ class ServerTestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmpdir = tempfile.mkdtemp(prefix="panel-test-")
-        os.environ["PANEL_DATA_DIR"] = cls.tmpdir
-        for name in ("REPO_URL", "REPO_TOKEN", "PANEL_TOKEN",
-                     "PANEL_PUBLIC_URL", "VAPID_SUBJECT"):
+        for name in ("REPO_URL", "REPO_TOKEN", "PANEL_TOKEN"):
             os.environ.pop(name, None)
 
         spec = importlib.util.spec_from_file_location("panel_server_under_test", SERVER_PATH)
@@ -48,13 +38,12 @@ class ServerTestCase(unittest.TestCase):
 
         # Isolate all on-disk state (the existing files live in BASE by default).
         for name in ("STATUS_FILE", "CMD_FILE", "ACK_FILE", "ESTADO_FILE",
-                     "VERSION_FILE", "VAPID_FILE", "SUBSCRIPTIONS_FILE"):
+                     "VERSION_FILE"):
             setattr(server, name, os.path.join(cls.tmpdir,
                                                os.path.basename(getattr(server, name))))
         server.REPO = ""
         server.TOKEN = ""
         server.PANEL_TOKEN = ""
-        server.PANEL_PUBLIC_URL = ""
         index = os.path.join(cls.tmpdir, "index.html")
         with open(index, "w") as handle:
             handle.write("<!doctype html><title>test</title>")
@@ -82,18 +71,9 @@ class ServerTestCase(unittest.TestCase):
             s._ack_cache = {}
             s._estado_cache = {}
         s._last_status_write = 0.0
-        with s._subscriptions_lock:
-            s._subscriptions = {}
-        s._pc_online = None
-        s._pending_event = None
-        s._pending_count = 0
-        s._vapid = None
         s._last_ts_ms = 0
         s.PANEL_TOKEN = ""
-        s.PANEL_PUBLIC_URL = ""
-        s._push_queue = queue.Queue(maxsize=64)
-        for name in ("STATUS_FILE", "CMD_FILE", "ACK_FILE", "ESTADO_FILE",
-                     "SUBSCRIPTIONS_FILE", "VAPID_FILE"):
+        for name in ("STATUS_FILE", "CMD_FILE", "ACK_FILE", "ESTADO_FILE"):
             try:
                 os.unlink(getattr(s, name))
             except OSError:
@@ -132,23 +112,6 @@ class ServerTestCase(unittest.TestCase):
         }
         data.update(extra)
         return self.request("POST", "/status", data)
-
-    def subscription(self, endpoint="https://web.push.apple.com/abc"):
-        client = self.server.ec.generate_private_key(self.server.ec.SECP256R1())
-        point = client.public_key().public_bytes(
-            self.server.serialization.Encoding.X962,
-            self.server.serialization.PublicFormat.UncompressedPoint)
-        return {"endpoint": endpoint, "keys": {
-            "p256dh": self.server.b64u(point),
-            "auth": self.server.b64u(os.urandom(16)),
-        }}
-
-    def add_subscription(self, endpoint="https://web.push.apple.com/abc"):
-        self.server.PANEL_PUBLIC_URL = "https://phone.ts.net"
-        result = self.request("POST", "/push/subscribe",
-                              {"subscription": self.subscription(endpoint)})
-        self.assertEqual(result["status"], 200)
-        return result
 
     # ------------------------------------------------ existing contract (1-6)
     def test_existing_get_endpoints(self):
@@ -295,164 +258,6 @@ class ServerTestCase(unittest.TestCase):
             self.assertEqual(fourth["status"], 200)  # reads are not token-guarded
         finally:
             self.server.PANEL_TOKEN = ""
-
-    # ------------------------------------------------------ PWA assets (15-16)
-    def test_manifest_route(self):
-        result = self.request("GET", "/manifest.webmanifest")
-        self.assertEqual(result["status"], 200)
-        self.assertIn("application/manifest+json", result["ctype"])
-        manifest = self.json_of(result)
-        self.assertEqual(manifest["id"], "/")
-        self.assertEqual(manifest["start_url"], "/")
-        self.assertEqual(manifest["display"], "standalone")
-
-    def test_sw_route(self):
-        result = self.request("GET", "/sw.js")
-        self.assertEqual(result["status"], 200)
-        self.assertIn("application/javascript", result["ctype"])
-        self.assertEqual(result["headers"].get("Service-Worker-Allowed"), "/")
-        body = result["body"].decode()
-        self.assertIn("addEventListener('push'", body)
-        self.assertIn("showNotification", body)
-
-    # ------------------------------------------------ push config/state (17-24)
-    def test_push_config_shape(self):
-        result = self.request("GET", "/push/config")
-        self.assertEqual(result["status"], 200)
-        config = self.json_of(result)
-        self.assertIsInstance(config["push_available"], bool)
-        self.assertIn(config["public_key"], (None, str))
-        self.assertIsInstance(config["token_required"], bool)
-        self.assertIsInstance(config["public_url"], str)
-        self.assertTrue(config["error"] is None or isinstance(config["error"], str))
-        self.assertFalse(config["push_available"])  # PANEL_PUBLIC_URL is unset
-
-    def test_push_config_no_crypto(self):
-        with mock.patch.object(self.server, "_CRYPTO_OK", False):
-            result = self.request("GET", "/push/config")
-        self.assertEqual(result["status"], 200)
-        config = self.json_of(result)
-        self.assertFalse(config["push_available"])
-        self.assertIsNotNone(config["error"])
-        self.assertNotEqual(config["error"], "")
-
-    @unittest.skipUnless(_CRYPTO_AVAILABLE, "cryptography not installed")
-    def test_vapid_public_key(self):
-        key = self.server.get_vapid()["public_key_b64u"]
-        self.assertIsInstance(key, str)
-        self.assertEqual(len(key), 87)
-        raw = self.server.unb64u(key)
-        self.assertEqual(len(raw), 65)
-        self.assertEqual(raw[0], 0x04)
-
-    def test_subscribe_validation_and_storage(self):
-        self.server.PANEL_PUBLIC_URL = "https://phone.ts.net"
-        sub = self.subscription()
-        ok = self.request("POST", "/push/subscribe", {"subscription": sub})
-        self.assertEqual(ok["status"], 200)
-        self.assertEqual(self.json_of(ok)["subscriptions"], 1)
-        self.assertTrue(os.path.exists(self.server.SUBSCRIPTIONS_FILE))
-        duplicate = self.request("POST", "/push/subscribe", {"subscription": sub})
-        self.assertEqual(self.json_of(duplicate)["subscriptions"], 1)
-        bad_endpoint = dict(sub, endpoint="http://web.push.apple.com/abc")
-        self.assertEqual(self.request("POST", "/push/subscribe",
-                                      {"subscription": bad_endpoint})["status"], 400)
-        bad_keys = dict(sub, keys={"p256dh": "x", "auth": "y"})
-        self.assertEqual(self.request("POST", "/push/subscribe",
-                                      {"subscription": bad_keys})["status"], 400)
-        missing = self.request("POST", "/push/subscribe", {})
-        self.assertEqual(missing["status"], 400)
-        self.server.PANEL_PUBLIC_URL = ""
-        unavailable = self.request("POST", "/push/subscribe", {"subscription": sub})
-        self.assertEqual(unavailable["status"], 503)
-        self.assertIn("error", self.json_of(unavailable))
-
-    def test_unsubscribe(self):
-        self.add_subscription("https://web.push.apple.com/one")
-        self.add_subscription("https://web.push.apple.com/two")
-        listing = self.json_of(self.request("GET", "/push/subscriptions"))
-        self.assertEqual(listing["count"], 2)
-        self.request("POST", "/push/unsubscribe",
-                     {"endpoint": "https://web.push.apple.com/one"})
-        listing = self.json_of(self.request("GET", "/push/subscriptions"))
-        self.assertEqual(listing["count"], 1)
-        self.assertEqual(listing["endpoints"], ["https://web.push.apple.com/two"])
-
-    def test_push_test_enqueues(self):
-        self.add_subscription("https://web.push.apple.com/one")
-        self.add_subscription("https://web.push.apple.com/two")
-        with mock.patch.object(self.server, "enqueue_push") as enqueue:
-            result = self.request("POST", "/push/test", {})
-        self.assertEqual(result["status"], 200)
-        self.assertEqual(self.json_of(result), {"ok": True, "queued": 2})
-        self.assertEqual(enqueue.call_count, 2)
-
-    def test_send_push_prunes_on_410(self):
-        error = urllib.error.HTTPError("https://web.push.apple.com/abc", 410,
-                                       "Gone", None, None)
-        with mock.patch.object(self.server, "encrypt_payload", return_value=b"body"), \
-                mock.patch.object(self.server, "make_vapid_auth", return_value="vapid x"), \
-                mock.patch.object(self.server.urllib.request, "urlopen", side_effect=error):
-            self.assertEqual(
-                self.server.send_web_push("https://web.push.apple.com/abc", {}, {}),
-                "prune")
-        self.add_subscription("https://web.push.apple.com/abc")
-        self.assertTrue(self.server.prune_subscription("https://web.push.apple.com/abc"))
-        self.assertFalse(self.server.prune_subscription("https://web.push.apple.com/abc"))
-        error.close()
-        with open(self.server.SUBSCRIPTIONS_FILE) as handle:
-            self.assertEqual(json.load(handle), {})
-
-    @unittest.skipUnless(_CRYPTO_AVAILABLE, "cryptography not installed")
-    def test_encrypt_payload_structure(self):
-        client = self.server.ec.generate_private_key(self.server.ec.SECP256R1())
-        point = client.public_key().public_bytes(
-            self.server.serialization.Encoding.X962,
-            self.server.serialization.PublicFormat.UncompressedPoint)
-        keys = {"p256dh": self.server.b64u(point),
-                "auth": self.server.b64u(os.urandom(16))}
-        plaintext = b'{"web_push":8030}'
-        body = self.server.encrypt_payload(plaintext, keys)
-        self.assertGreater(len(body), 16 + 4 + 1 + 65 + len(plaintext) + 16)
-        self.assertEqual(int.from_bytes(body[16:20], "big"), 4096)
-        self.assertEqual(body[20], 65)
-        # bytes 21:86 are the ephemeral sender public key (RFC 8291), not the
-        # VAPID key: assert it is a well-formed uncompressed P-256 point.
-        self.assertEqual(body[21], 0x04)
-        self.assertEqual(len(body[21:86]), 65)
-
-    # --------------------------------------------- pure transitions (25-29)
-    def test_transition_baseline_no_event(self):
-        now = time.time()
-        for status in ({"recibido_en_celular": True, "recibido_ts": now},
-                       {"recibido_en_celular": False, "recibido_ts": now}):
-            event, state = self.server.transition_decision(status, None, now)
-            self.assertIsNone(event)
-            self.assertIs(state, bool(status["recibido_en_celular"]))
-
-    def test_transition_offline_once(self):
-        now = time.time()
-        online = {"recibido_en_celular": True, "recibido_ts": now}
-        stale = {"recibido_en_celular": True, "recibido_ts": now - 16}
-        self.assertEqual(self.server.transition_decision(online, True, now), (None, True))
-        self.assertEqual(self.server.transition_decision(stale, True, now),
-                         ("offline", False))
-        self.assertEqual(self.server.transition_decision(stale, False, now),
-                         (None, False))
-
-    def test_transition_online_again(self):
-        now = time.time()
-        fresh = {"recibido_en_celular": True, "recibido_ts": now}
-        self.assertEqual(self.server.transition_decision(fresh, False, now),
-                         ("online", True))
-        self.assertEqual(self.server.transition_decision(fresh, True, now),
-                         (None, True))
-
-    def test_transition_ignores_old_persisted_status(self):
-        old = {"recibido_en_celular": True, "recibido_ts": time.time() - 3600}
-        event, state = self.server.transition_decision(old, None)
-        self.assertIsNone(event)
-        self.assertFalse(state)
 
     def test_is_online_boundary(self):
         now = time.time()
