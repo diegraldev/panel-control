@@ -11,6 +11,14 @@ termux-wake-lock
 #   curl -s -X POST 'http://100.113.245.28:8080/version?check=1'
 # (add -H 'X-Panel-Token: ...' if PANEL_TOKEN is configured).
 export DEPLOY_POLL=300
+# Optional Web Push (iPhone alerts). Uncomment only after enabling MagicDNS +
+# HTTPS certificates in Tailscale and installing python-cryptography in Termux:
+#   pkg install python-cryptography
+#   python3 -c "import cryptography; print(cryptography.__version__)"
+# Replace <phone> with this device's MagicDNS name. Without these exports the
+# panel and Siri still work; /push/config reports why push is unavailable.
+# export PANEL_PUBLIC_URL=https://<phone>.<tailnet>.ts.net
+# export VAPID_SUBJECT=mailto:you@example.com
 if ! pgrep -f "python3 server.py" >/dev/null; then
   env REPO_URL=diegraldev/remotecontrol nohup python3 server.py > $H/panel/server.log 2>&1 &
 fi
