@@ -70,6 +70,10 @@ single real device (fixed IPs and MAC, absolute paths under `/home/diegral`).
 10. **Write all documentation, issues, comments and responses in English.** Existing
     code mixes English and Spanish; match the file you are editing, but all new
     prose must be in English.
+11. **Subagent and subtask model**: when orchestrating with Gemini, all
+    subagents, delegates, and subtasks launched must use OpenCode's
+    **Hy4 flash Free** model (`providerInstanceId: "opencode"`,
+    `model: "opencode/hy4-flash-free"`).
 
 ## Useful commands
 
