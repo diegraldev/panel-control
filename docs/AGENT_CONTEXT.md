@@ -42,22 +42,17 @@ Phone boot: `Termux:Boot` runs `panel_celular/boot_panel`
 | GET | `/battery` | browser | `{"level": %, "charging": bool}` from the 30 s cache |
 | GET | `/version` | debug / deploy | `{"sha": ..., "repo": ...}` |
 
-Additive iOS routes (new paths / one new query flag; the contract above is unchanged):
+Additive Siri route (new path / one new query flag; the contract above is unchanged):
 
 | Method | Path | Used by | Effect |
 |---|---|---|---|
 | GET | `/siri` | Siri Shortcuts | plain-text status sentence, or `PC is off.` |
 | POST | `/cmd?spoken=1` | Siri Shortcuts | same command, plain-text sentence reply; a missing/invalid `ts` is auto-filled |
-| GET | `/manifest.webmanifest`, `/sw.js` | iPhone PWA | embedded manifest and service worker (no new deployable files) |
-| GET | `/push/config`, `/push/subscriptions` | UI / debug | push availability + VAPID public key; subscription count/endpoints (no secrets) |
-| POST | `/push/subscribe`, `/push/unsubscribe`, `/push/test` | iPhone PWA | store/remove a subscription; enqueue one test notification per subscriber |
 
 `GET /siri` and `POST /cmd?spoken=1` (also triggered by `Accept: text/plain`) are guarded
 exactly like the original routes. A spoken invalid command returns `400` plain text;
-guard failures keep the original JSON body. All push routes inherit
-`_guard(mutating=True)` — there is no second guard. Push endpoints never block a
-request: transition detection and delivery run in daemon threads, and `PANEL_PUBLIC_URL`
-unset (or a missing `cryptography` module) disables push with a clear config error.
+guard failures keep the original JSON body. Both routes inherit the same
+`_guard()` as the original endpoints; no second guard and no new background work.
 
 Valid commands (`CMD_VALUES`): `shutdown`, `wake`, `cancelar`, `t3-open`,
 `t3-close`, `sleep-on`, `sleep-off`.
@@ -82,11 +77,6 @@ Phone server (`panel_celular/server.py`):
 | `WAKE_TOKEN` | `""` | sent as `X-Wake-Token` to the listener |
 | `WAKE_URL` | `http://100.69.149.63:8091/wake` | root listener on the PC |
 | `ALLOWED_HOSTS` | `""` | extra allowed hosts, comma-separated |
-| `PANEL_PUBLIC_URL` | `""` | HTTPS `https://<phone>.<tailnet>.ts.net` name; unset disables push |
-| `VAPID_SUBJECT` | `https://github.com/diegraldev/remotecontrol` | VAPID JWT `sub` (a `mailto:` or `https:` URL) |
-| `PUSH_TTL` | `60` | seconds of TTL sent to the push service |
-| `PUSH_CHECK_INTERVAL` | `2` | seconds between transition-detector polls |
-| `PANEL_DATA_DIR` | `BASE` | directory for `vapid.json` / `subscriptions.json` (tests isolate it) |
 
 PC agent (`panel_pc/agent.py`):
 
@@ -184,23 +174,16 @@ From commit `e5606b7` and later (original report `REPORT.html`, later removed):
    `server.py` restarts the process and dumps state.
 7. Record any new architectural decision in `DECISIONS.md`.
 
-## 9. iOS Siri and Web Push (additive)
+## 9. Siri Shortcuts (additive)
 
-- `server.py` detects online/offline transitions in a daemon thread using the same
-  15 s `recibido_ts` rule as the UI, confirmed by two consecutive polls. A pure
-  `transition_decision()` (no I/O, no locks) makes this unit-testable; the first
-  observation only establishes the baseline, so a restart never sends a spurious alert.
-- Deliveries go through a single bounded queue (`_push_queue`, max 64) and one daemon
-  worker. `410`/`404` prunes the subscription from memory and `subscriptions.json`;
-  429/5xx/timeouts are logged and dropped, never retried in a loop.
-- Payloads use the declarative Web Push format (`web_push: 8030`) with `navigate` and
-  `app_badge`, so iOS 18.4+ renders them without a live service worker; `sw.js` calls
-  `showNotification()` for older versions. The manifest and SW are string constants in
-  `server.py` — the deploy copy list is still `index.html`, `server.py`, `wol.py`.
-- `cryptography` is optional: with it missing, `/push/config` reports the reason and
-  mutating push routes return 503; the panel, Siri and all original endpoints keep
-  working. `vapid.json` is generated once and reused (mode 0600).
-- The one-time phone setup is manual (`boot_panel` is not auto-deployed). Exact
-  Shortcut recipes and verification steps are in `IOS-SIRI-AND-PUSH-SETUP.md`; the
-  design rationale is ADR-013 in `DECISIONS.md`. Tests: `tests/test_server.py`
+- `GET /siri` builds one plain-text sentence from the live status cache using the
+  same 15 s freshness rule as the UI; a stale or missing PC reads `PC is off.`
+- `POST /cmd?spoken=1` queues the same seven commands and replies with a plain-text
+  sentence instead of JSON. It also accepts `Accept: text/plain`; `?spoken=1` never
+  changes the JSON contract for existing clients.
+- A missing or invalid `ts` is filled with a strictly increasing millisecond value
+  so two spoken commands in the same millisecond cannot collide with the agent's
+  idempotency key.
+- Recipes and verification steps are in `docs/SIRI-SHORTCUTS.md`; the design
+  rationale is ADR-013 in `DECISIONS.md`. Tests: `tests/test_server.py`
   (`python3 -m unittest discover -s tests -v`).

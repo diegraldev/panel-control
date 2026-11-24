@@ -66,11 +66,8 @@ New options (all optional, with backwards-compatible defaults):
 ## Usage
 Open `http://100.113.245.28:8080` with Tailscale enabled.
 
-## iPhone: Siri and notifications
-Control the panel by voice with Siri Shortcuts (`GET /siri`, `POST /cmd?spoken=1`) and
-receive "PC went offline / back online" notifications plus an app badge on the iPhone
-Home Screen via Web Push. Both are additive features and require no changes to the PC
-agent. See [docs/IOS-SIRI-AND-PUSH-SETUP.md](docs/IOS-SIRI-AND-PUSH-SETUP.md) for the
-six exact Shortcut recipes, Tailscale Serve HTTPS, the one-time phone setup and
-verification. A true Dynamic Island / Live Activity needs a native app and is out of
-scope.
+## iPhone: Siri voice control
+Control the panel by voice with Siri Shortcuts (`GET /siri`, `POST /cmd?spoken=1`).
+This is additive and needs no changes to the PC agent. See
+[docs/SIRI-SHORTCUTS.md](docs/SIRI-SHORTCUTS.md) for the six exact Shortcut recipes
+and verification steps.
