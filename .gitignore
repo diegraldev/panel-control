@@ -7,3 +7,5 @@ version.json
 .deploy/
 *.new
 __pycache__/
+vapid.json
+subscriptions.json

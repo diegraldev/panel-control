@@ -156,3 +156,38 @@ tested and rejected. Commit numbers refer to the real history of `main`.
   Command latency (~2 ms) and the 15 s freshness timeout are unchanged.
   Rollback: remove the `DEPLOY_POLL` export in `boot_panel` and revert the
   polling/backoff changes; no service or OS change is involved.
+
+---
+
+## ADR-013 — Additive iOS Siri + Web Push, with embedded PWA assets
+(`panel_celular/server.py`, `panel_celular/index.html`, `docs/IOS-SIRI-AND-PUSH-SETUP.md`)
+
+- **Context:** iOS cannot render Live Activities / Dynamic Island from a web app
+  (that needs ActivityKit + APNs and a native app). Web Push needs an HTTPS origin,
+  VAPID keys and RFC 8291 payload encryption, which Termux Python cannot do with the
+  standard library alone. The phone auto-deploys only three files, so a new `sw.js` or
+  `manifest.webmanifest` file would never reach the device.
+- **Decision:** ship Siri (`GET /siri`, `POST /cmd?spoken=1`) and Web Push as *additive*
+  routes in `server.py`. Embed the manifest and service worker as string constants
+  (`MANIFEST_JS`, `SW_JS`) so the deploy copy list stays unchanged. Require
+  `cryptography` only for push, with a graceful runtime fallback: if the import fails,
+  every pre-existing endpoint still works and push routes return a clear 503/error.
+  Keep transition detection in a daemon thread with a pure, unit-testable decision
+  function (`is_online`, `transition_decision`), a two-poll debounce and a single
+  queue consumer. Declarative payloads (`web_push: 8030`) render on iOS 18.4+ even if
+  the service worker was evicted; `sw.js` covers older versions. `PANEL_PUBLIC_URL`
+  unset disables push rather than sending a payload Apple may reject.
+- **Consequences:** no HTTP contract change (same endpoints, fields and seven
+  commands; `POST /cmd` keeps its JSON reply unless `spoken=1`), no deploy-logic change,
+  no forks or blocking in the request path. Push is best-effort and can be disabled
+  without affecting the panel. A true Dynamic Island remains out of scope and is
+  tracked separately. One-time phone setup (`boot_panel` exports, `cryptography`) is
+  manual because `boot_panel` is not auto-deployed.
+
+### Implementation note: DER → raw VAPID signature
+
+The ES256 JWT signature must be the raw `r || s` (64 bytes), not DER. `make_vapid_auth()`
+calls `decode_dss_signature()` and pads each component to 32 bytes; sending DER
+directly produces `BadJwtToken` from Apple. The same helper derives the JWT `aud` from
+the subscription endpoint's scheme + netloc. Keep both details if the crypto code is
+ever refactored.
