@@ -181,8 +181,8 @@ tested and rejected. Commit numbers refer to the real history of `main`.
   commands; `POST /cmd` keeps its JSON reply unless `spoken=1`), no deploy-logic change,
   no forks or blocking in the request path. Push is best-effort and can be disabled
   without affecting the panel. A true Dynamic Island remains out of scope and is
-  tracked separately. One-time phone setup (`boot_panel` exports, `cryptography`) is
-  manual because `boot_panel` is not auto-deployed.
+  tracked separately. One-time phone setup (`~/.termux/boot/panel` exports, `cryptography`) is
+  manual because boot scripts are not auto-deployed.
 
 ### Implementation note: DER → raw VAPID signature
 
@@ -191,3 +191,30 @@ calls `decode_dss_signature()` and pads each component to 32 bytes; sending DER
 directly produces `BadJwtToken` from Apple. The same helper derives the JWT `aud` from
 the subscription endpoint's scheme + netloc. Keep both details if the crypto code is
 ever refactored.
+
+---
+
+## ADR-014 — HTTPS terminates on the PC, not on the phone
+
+(`docs/IOS-SIRI-AND-PUSH-SETUP.md`, `panel_celular/boot_panel`,
+`~/.termux/boot/panel`)
+
+- **Context:** Web Push needs a secure origin. Termux on Android has no
+  `tailscale` CLI, and `tailscale cert` on this tailnet only issues certificates
+  for the PC's own MagicDNS name (`msi-laptop.tail25e286.ts.net`). A direct
+  `tailscale serve` from the phone is therefore not possible, and tailscaled's
+  serve proxy cannot dial a peer's Tailscale IP (`100.113.245.28:8080` hangs with
+  `http: proxy error: context canceled`).
+- **Decision:** run `sudo tailscale serve --bg --yes --https=443
+  http://192.168.100.15:8080` on the PC, proxying to the phone's stable LAN IP.
+  The web app is opened as `https://msi-laptop.tail25e286.ts.net/`, and the phone
+  exports `PANEL_PUBLIC_URL` with that same origin so the manifest, service worker
+  and VAPID JWT match. Tailscaled renews the Let's Encrypt certificate; the phone
+  keeps serving plain HTTP on 8080 and still answers Siri directly over the
+  tailnet IP.
+- **Consequences:** push notifications are sent by the phone and keep arriving
+  when the PC is off, but the web app itself needs the PC to be on. The Host/Origin
+  guard accepts the proxied requests (the PC name resolves inside the tailnet),
+  so no guard changes are needed. If the phone's LAN address changes, the serve
+  target must be updated. Never use `tailscale funnel`, which would expose the
+  panel publicly.

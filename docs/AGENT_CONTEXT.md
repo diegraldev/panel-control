@@ -82,7 +82,7 @@ Phone server (`panel_celular/server.py`):
 | `WAKE_TOKEN` | `""` | sent as `X-Wake-Token` to the listener |
 | `WAKE_URL` | `http://100.69.149.63:8091/wake` | root listener on the PC |
 | `ALLOWED_HOSTS` | `""` | extra allowed hosts, comma-separated |
-| `PANEL_PUBLIC_URL` | `""` | HTTPS `https://<phone>.<tailnet>.ts.net` name; unset disables push |
+| `PANEL_PUBLIC_URL` | `""` | public HTTPS origin of the web app (`https://msi-laptop.tail25e286.ts.net`, served by `tailscale serve` on the PC); unset disables push |
 | `VAPID_SUBJECT` | `https://github.com/diegraldev/remotecontrol` | VAPID JWT `sub` (a `mailto:` or `https:` URL) |
 | `PUSH_TTL` | `60` | seconds of TTL sent to the push service |
 | `PUSH_CHECK_INTERVAL` | `2` | seconds between transition-detector polls |

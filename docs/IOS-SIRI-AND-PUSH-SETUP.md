@@ -20,6 +20,8 @@ research behind this decision.
 1. Tailscale installed and connected on the iPhone and on the Android phone that runs
    the panel.
 2. Tailscale admin console → **DNS**: enable **MagicDNS** and **HTTPS certificates**.
+   This tailnet only issues certificates for the PC's own MagicDNS name, which is why
+   Part B terminates HTTPS on the PC.
 3. Termux:Boot and Termux on the phone, with the panel already working over the tailnet
    IP.
 4. For push only: `cryptography` installed in Termux (Part D).
@@ -69,7 +71,9 @@ Notes:
 - Shortcuts run on the device that invokes them. A HomePod or Apple Watch needs its own
   Tailscale connection and its own shortcuts; Siri on the iPhone will not relay to them.
 - Built-in shortcut names can collide with system phrases — use **Add to Siri** with a
-  distinctive phrase if Siri picks the wrong action.
+  distinctive phrase if Siri picks the wrong action. The spoken phrase can be in any
+  language Siri supports: record "Enciende mi PC", "Apaga mi PC" or "Abre T3 Code" as
+  the phrase for the matching shortcut.
 - Do **not** use Tailscale Funnel: it would expose the panel publicly and defeat the
   `Host`/`Origin`/token guards.
 
@@ -83,23 +87,43 @@ Each spoken command should appear as a normal queued command.
 
 ---
 
-## Part B — HTTPS via Tailscale Serve
+## Part B — HTTPS via Tailscale Serve on the PC
 
-Web Push and service workers require a **secure context**. `http://100.113.245.28:8080`
-is not one, so push only works through the phone's private HTTPS name.
+Web Push and service workers require a **secure context**.
+`http://100.113.245.28:8080` is not one, so the web app must be opened through an
+HTTPS name. Termux on Android has no `tailscale` CLI, and this tailnet only issues
+HTTPS certificates for the PC's own MagicDNS name, so HTTPS terminates on the PC
+and is reverse-proxied to the phone.
 
-In the phone's Termux session run:
+On the PC, run once (tailscaled runs as root, so the serve config needs `sudo`):
 
 ```bash
-tailscale serve --bg 8080
+sudo tailscale serve --bg --yes --https=443 http://192.168.100.15:8080
 ```
 
-(Use the current CLI equivalent on your Tailscale version.) Then open
-`https://<phone>.<tailnet>.ts.net/version` in Safari on the iPhone: it must return JSON.
-Serve uses publicly trusted Let's Encrypt certificates, so no custom CA profile is
-needed.
+The backend must be the phone's **LAN IP**, not `100.113.245.28`: tailscaled's serve
+proxy cannot dial a peer's Tailscale IP (requests hang with
+`http: proxy error: context canceled`), while the same-subnet address works. The
+phone is a fixed device on the home network, so this address is stable; if it ever
+changes, update the serve target and rerun the command.
+
+The web app URL is therefore **`https://msi-laptop.tail25e286.ts.net/`**. Verify
+from the PC and then in Safari on the iPhone:
+
+```bash
+curl -s --resolve msi-laptop.tail25e286.ts.net:443:100.69.149.63 \
+  https://msi-laptop.tail25e286.ts.net/version
+```
+
+Serve uses a publicly trusted Let's Encrypt certificate that tailscaled renews
+automatically, so no custom CA profile is needed. Check the config any time with
+`tailscale serve status --json`; disable it with
+`sudo tailscale serve --https=443 off`.
 
 - **Never** run `tailscale funnel`: it publishes the panel to the internet.
+- The phone server sends push notifications itself, so alerts still arrive when the
+  PC is off. Only the web app itself is unreachable until the PC is back; Siri
+  (Part A) talks directly to the phone IP and is unaffected.
 - There are intermittent iOS reports of secure-connection failures with `*.ts.net`
   (see [tailscale/tailscale#19147](https://github.com/tailscale/tailscale/issues/19147)).
   If Safari rejects the certificate, keep using Siri over the tailnet IP (Part A) and
@@ -109,7 +133,7 @@ needed.
 
 ## Part C — Add the panel to the Home Screen
 
-1. Open `https://<phone>.<tailnet>.ts.net/` in Safari.
+1. Open `https://msi-laptop.tail25e286.ts.net/` in Safari.
 2. **Share** → **Add to Home Screen**.
 3. Keep **Open as Web App** on (default since iOS 26) and confirm.
 4. Launch the panel from its new icon (not from Safari).
@@ -129,40 +153,48 @@ calls `showNotification()` instead.
 
 ---
 
-## Part D — One-time setup on the phone (manual)
+## Part D — One-time setup on the phone (already applied)
 
-`boot_panel` is **not** auto-deployed, so these changes must be applied once by hand on
-the device; the repository copy is updated too for future reinstalls.
+`boot_panel` is **not** auto-deployed, so these changes are applied once by hand on
+the device; the repository copy carries the same values (commented out, to be
+uncommented when provisioning a new device). The steps below are the configuration
+currently running on `100.113.245.28`.
 
-1. Install the crypto dependency (required only for push):
+1. The crypto dependency is installed (required only for push):
 
    ```bash
    pkg install python-cryptography
    python3 -c "import cryptography; print(cryptography.__version__)"
    ```
 
-   Alternative if the repo package is unavailable: `pip install cryptography` (may
-   need `pkg install openssl rust` and a source build). If the import fails the panel
-   and Siri keep working and `/push/config` explains that push is disabled.
+   Currently reports `50.0.2`. If the import fails, the panel and Siri keep working
+   and `/push/config` explains that push is disabled.
 
-2. Add these exports to `/data/data/com.termux/files/home/panel/boot_panel`, before the
-   `python3 server.py` launch line:
-
-   ```bash
-   export PANEL_PUBLIC_URL=https://<phone>.<tailnet>.ts.net
-   export VAPID_SUBJECT=mailto:you@example.com    # or keep the default https: URL
-   ```
-
-3. Kill the running `python3 server.py` so Termux:Boot / the `pgrep` guard restarts it
-   with the new environment (or start it manually with the same exports).
-
-4. Confirm the result from Safari or Termux:
+2. The active Termux:Boot script is
+   `/data/data/com.termux/files/home/.termux/boot/panel` (note: **not**
+   `~/panel/boot_panel`; the deploy only replaces `index.html`, `server.py` and
+   `wol.py`). It already exports, before the `python3 server.py` launch line:
 
    ```bash
-   curl -s https://<phone>.<tailnet>.ts.net/push/config
+   export DEPLOY_POLL=300
+   export PANEL_PUBLIC_URL=https://msi-laptop.tail25e286.ts.net
+   export VAPID_SUBJECT=mailto:diegraldev@users.noreply.github.com
    ```
 
-   It must show `"push_available": true` and an 87-character `public_key`.
+3. The running `python3 server.py` was restarted with those same exports, so the
+   current process has the new environment. After a reboot Termux:Boot starts it with
+   the boot script above.
+
+4. Confirm the result through the PC proxy or directly in Termux:
+
+   ```bash
+   curl -s https://msi-laptop.tail25e286.ts.net/push/config
+   ```
+
+   It reports `"push_available": true`, an 87-character `public_key`,
+   `"token_required": false` and the exact `public_url` above. For future SSH
+   management, Termux `sshd` runs on port 8022 with key authentication; never expose
+   that port outside the tailnet.
 
 `vapid.json` (private key, mode 0600) and `subscriptions.json` are created next to
 `server.py` and are gitignored. The VAPID key is generated once and reused across
